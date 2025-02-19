@@ -37,7 +37,9 @@
                 BorderThickness="0"
                 AcceptsReturn="True"
                 TextWrapping="Wrap"
-                VerticalScrollBarVisibility="Auto" />
+                VerticalScrollBarVisibility="Auto" 
+                FontFamily="Segoe UI Variable Text"
+                />
         </ui:Card>
         <ui:Card
             Grid.Row="1"
@@ -53,23 +55,22 @@
                 BorderThickness="0"
                 AcceptsReturn="True"
                 TextWrapping="Wrap"
-                VerticalScrollBarVisibility="Auto" />
+                VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text Semibold" />
         </ui:Card>
 
         <ui:Card
             Grid.Row="2"
             Margin="15,1,20,3"
             Padding="8"
-            VerticalAlignment="Stretch">
-            <Grid>
+            VerticalAlignment="Top">
+            <Grid VerticalAlignment="Top">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 
-                <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                    <TextBlock Text="历史字幕" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
-                    <Button Content="清除历史" 
+                <DockPanel Grid.Row="0" Margin="0,0,0,8" VerticalAlignment="Top" HorizontalAlignment="Left">
+                    <Button Content="Clear History" 
                             Click="ClearHistory_Click"
                             HorizontalAlignment="Right"
                             Padding="8,4"/>
@@ -82,14 +83,28 @@
                         <DataTemplate>
                             <Border Margin="0,4" Padding="8" BorderThickness="0,0,0,1" BorderBrush="#20000000">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Original}" 
-                                             FontSize="13" 
-                                             TextWrapping="Wrap"
-                                             Margin="0,0,0,4"/>
-                                    <TextBlock Text="{Binding Translated}" 
-                                             FontSize="15"
-                                             TextWrapping="Wrap"
-                                             Foreground="#666666"/>
+
+                                    <TextBox
+                                        FontSize="13"
+                                        Text="{Binding Original}" 
+                                        IsReadOnly="True"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        AcceptsReturn="True"
+                                        TextWrapping="Wrap"
+                                        Margin="0,0,0,0"
+                                        VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text" />
+                                    <TextBox
+                                        FontSize="13"
+                                        Text="{Binding Translated}" 
+                                        IsReadOnly="True"
+                                        Background="Transparent"
+                                        Foreground="#666666"
+                                        BorderThickness="0"
+                                        AcceptsReturn="True"
+                                        TextWrapping="Wrap"
+                                        Margin="0,0,0,0"
+                                        VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text Semibold" />
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
