@@ -15,6 +15,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.Resources>
             <Style x:Key="CaptionBlockStyle" TargetType="TextBlock">
@@ -28,34 +29,35 @@
             Margin="15,3,20,1"
             Padding="8"
             VerticalAlignment="Stretch">
-            <TextBox
-                x:Name="OriginalCaption"
-                FontSize="15"
-                Text="{Binding Original}"
-                IsReadOnly="True"
-                Background="Transparent"
-                BorderThickness="0"
-                AcceptsReturn="True"
-                TextWrapping="Wrap"
-                VerticalScrollBarVisibility="Auto" 
-                FontFamily="Segoe UI Variable Text"
-                />
-        </ui:Card>
-        <ui:Card
-            Grid.Row="1"
-            Margin="15,1,20,3"
-            Padding="8"
-            VerticalAlignment="Stretch">
-            <TextBox
-                x:Name="TranslatedCaption"
-                FontSize="15"
-                Text="{Binding Translated, UpdateSourceTrigger=PropertyChanged}"
-                IsReadOnly="True"
-                Background="Transparent"
-                BorderThickness="0"
-                AcceptsReturn="True"
-                TextWrapping="Wrap"
-                VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text Semibold" />
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBox Grid.Row="0"
+                    x:Name="OriginalCaption"
+                    FontSize="15"
+                    Text="{Binding Original}"
+                    IsReadOnly="True"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    AcceptsReturn="True"
+                    TextWrapping="Wrap"
+                    VerticalScrollBarVisibility="Auto" 
+                    FontFamily="Segoe UI Variable Text" Padding="10,3,10,3"
+                    />
+                <TextBox Grid.Row="1"
+                    x:Name="TranslatedCaption"
+                    FontSize="15"
+                    Text="{Binding Translated, UpdateSourceTrigger=PropertyChanged}"
+                    IsReadOnly="True"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    AcceptsReturn="True"
+                    TextWrapping="Wrap"
+                    VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text Semibold" Padding="10,3,10,3" />
+            </Grid>
         </ui:Card>
 
         <ui:Card
@@ -63,21 +65,16 @@
             Margin="15,2,20,3"
             Padding="8"
             VerticalAlignment="Top" Background="#0C000000">
-            <Grid VerticalAlignment="Top">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                
-                <ItemsControl Grid.Row="0" 
-                            ItemsSource="{Binding CaptionHistory}"
-                            VirtualizingPanel.IsVirtualizing="True">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="0,4" Padding="8" BorderThickness="0,0,0,1" BorderBrush="#20000000">
-                                <StackPanel>
 
-                                    <TextBox
+            <ItemsControl 
+                ItemsSource="{Binding CaptionHistory}"
+                VirtualizingPanel.IsVirtualizing="True">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,0,5" Padding="10,5,10,5" BorderThickness="0,0,0,1" BorderBrush="#50000000">
+                            <StackPanel>
+
+                                <TextBox
                                         FontSize="13"
                                         Text="{Binding Original}" 
                                         IsReadOnly="True"
@@ -86,8 +83,8 @@
                                         AcceptsReturn="True"
                                         TextWrapping="Wrap"
                                         Margin="0,0,0,0"
-                                        VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text" />
-                                    <TextBox
+                                        VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text" Padding="10,3,10,3" />
+                                <TextBox
                                         FontSize="13"
                                         Text="{Binding Translated}" 
                                         IsReadOnly="True"
@@ -96,22 +93,21 @@
                                         AcceptsReturn="True"
                                         TextWrapping="Wrap"
                                         Margin="0,0,0,0"
-                                        VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text Semibold" />
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <DockPanel Grid.Row="1" Margin="0,0,0,8" VerticalAlignment="Top" HorizontalAlignment="Left">
-                    <ui:Button
-                        x:Name="Delete"
-                        Appearance="Transparent"
-                        Click="ClearHistory_Click"
-                        Icon="{ui:SymbolIcon Delete12,
-                         Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" />
-                </DockPanel>
-            </Grid>
+                                        VerticalScrollBarVisibility="Auto" FontFamily="Segoe UI Variable Text Semibold" Padding="10,3,10,3" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </ui:Card>
+        
+        <DockPanel Grid.Row="3" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="15,5,0,15">
+            <ui:Button
+            x:Name="Delete"
+            Appearance="Transparent"
+            Click="ClearHistory_Click"
+            Icon="{ui:SymbolIcon Delete12,
+                Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" />
+        </DockPanel>
     </Grid>
 </Page>
