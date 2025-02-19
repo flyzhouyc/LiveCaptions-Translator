@@ -38,6 +38,22 @@
                         Click="PauseButton_Click"
                         Icon="{ui:SymbolIcon Pause24,
                                              Filled=False}" />
+
+                    <ui:Button
+                        x:Name="subtitleMode"
+                        Margin="0,0,5,0"
+                        Appearance="Transparent"
+                        Click="SubtitleModeButton_Click"
+                        Icon="{ui:SymbolIcon TextT24,
+                                             Filled=False}" />
+                    <ui:Button
+                        x:Name="translationOnlyMode"
+                        Margin="0,0,5,0"
+                        Appearance="Transparent"
+                        Click="TranslationOnlyButton_Click"
+                        Icon="{ui:SymbolIcon Document24,
+                                             Filled=False}" />
+                    
                     <ui:Button
                         x:Name="topmost"
                         Margin="0,0,5,0"
@@ -61,21 +77,21 @@
                 <ui:NavigationViewItem
                     Margin="0,6,0,3"
                     Content="Caption"
-                    FontFamily="Bahnschrift"
+                    FontFamily="Segoe UI Variable Text Semibold" 
                     Icon="{ui:SymbolIcon Home24}"   
                     NavigationCacheMode="Enabled"
                     TargetPageType="{x:Type local:CaptionPage}" />
                 <ui:NavigationViewItem
                     Margin="0,3,0,0"
                     Content="History"
-                    FontFamily="Bahnschrift"
+                     FontFamily="Segoe UI Variable Text Semibold" 
                     Icon="{ui:SymbolIcon History24}"
                     NavigationCacheMode="Enabled"
                     TargetPageType="{x:Type local:HistoryPage}" />
                 <ui:NavigationViewItem
                     Margin="0,3,0,0"
                     Content="Setting"
-                    FontFamily="Bahnschrift"
+                     FontFamily="Segoe UI Variable Text Semibold" 
                     Icon="{ui:SymbolIcon Settings24}"
                     NavigationCacheMode="Enabled"
                     TargetPageType="{x:Type local:SettingPage}" />
