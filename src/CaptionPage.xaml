@@ -48,7 +48,7 @@
             VerticalAlignment="Stretch">
             <TextBox
                 x:Name="TranslatedCaption"
-                FontSize="18"
+                FontSize="15"
                 Text="{Binding Translated, UpdateSourceTrigger=PropertyChanged}"
                 IsReadOnly="True"
                 Background="Transparent"
@@ -60,23 +60,16 @@
 
         <ui:Card
             Grid.Row="2"
-            Margin="15,1,20,3"
+            Margin="15,2,20,3"
             Padding="8"
-            VerticalAlignment="Top">
+            VerticalAlignment="Top" Background="#0C000000">
             <Grid VerticalAlignment="Top">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 
-                <DockPanel Grid.Row="0" Margin="0,0,0,8" VerticalAlignment="Top" HorizontalAlignment="Left">
-                    <Button Content="Clear History" 
-                            Click="ClearHistory_Click"
-                            HorizontalAlignment="Right"
-                            Padding="8,4"/>
-                </DockPanel>
-
-                <ItemsControl Grid.Row="1" 
+                <ItemsControl Grid.Row="0" 
                             ItemsSource="{Binding CaptionHistory}"
                             VirtualizingPanel.IsVirtualizing="True">
                     <ItemsControl.ItemTemplate>
@@ -99,7 +92,6 @@
                                         Text="{Binding Translated}" 
                                         IsReadOnly="True"
                                         Background="Transparent"
-                                        Foreground="#666666"
                                         BorderThickness="0"
                                         AcceptsReturn="True"
                                         TextWrapping="Wrap"
@@ -110,6 +102,15 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <DockPanel Grid.Row="1" Margin="0,0,0,8" VerticalAlignment="Top" HorizontalAlignment="Left">
+                    <ui:Button
+                        x:Name="Delete"
+                        Appearance="Transparent"
+                        Click="ClearHistory_Click"
+                        Icon="{ui:SymbolIcon Delete12,
+                         Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" />
+                </DockPanel>
             </Grid>
         </ui:Card>
     </Grid>
