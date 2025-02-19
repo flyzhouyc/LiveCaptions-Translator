@@ -19,16 +19,16 @@
 
         <StackPanel Grid.Column="0" Orientation="Vertical">
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="LiveCaptions Setting" />
+                <TextBlock Margin="2.5,0,0,5" Text="LiveCaptions Setting" FontFamily="Segoe UI Variable Text" />
                 <ui:Button
                     Width="145"
                     Height="30"
                     Click="Setting_Click">
-                    <TextBlock Text="Open" />
+                    <TextBlock Text="Open" FontFamily="Segoe UI Variable Text"  />
                 </ui:Button>
             </StackPanel>
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Translation Interval" />
+                <TextBlock Margin="2.5,0,0,5" Text="Translation Interval" FontFamily="Segoe UI Variable Text"  />
                 <StackPanel Orientation="Horizontal">
                     <Slider
                         Width="140"
@@ -43,7 +43,7 @@
 
         <StackPanel Grid.Column="1" Orientation="Vertical">
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Translate API" />
+                <TextBlock Margin="2.5,0,0,5" Text="Translate API"  FontFamily="Segoe UI Variable Text" />
                 <ComboBox
                     x:Name="translateAPIBox"
                     Width="140"
@@ -54,7 +54,7 @@
                     SelectionChanged="translateAPIBox_SelectionChanged" />
             </StackPanel>
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Target Language" />
+                <TextBlock Margin="2.5,0,0,5" Text="Target Language" FontFamily="Segoe UI Variable Text"  />
                 <ComboBox
                     x:Name="targetLangBox"
                     Width="140"
@@ -110,7 +110,7 @@
                 Grid.Column="1"
                 Margin="15,10,0,0"
                 Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="API Url" />
+                <TextBlock Margin="2.5,0,0,5" Text="API Url" FontFamily="Segoe UI Variable Text"  />
                 <ui:TextBox
                     Width="185"
                     Height="30"
@@ -123,7 +123,7 @@
                 Grid.Column="1"
                 Margin="15,10,0,0"
                 Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="API Key" />
+                <TextBlock Margin="2.5,0,0,5" Text="API Key" FontFamily="Segoe UI Variable Text"  />
                 <ui:TextBox
                     Width="185"
                     Height="30"
@@ -147,7 +147,7 @@
                 Grid.Row="0"
                 Margin="15,10,0,0"
                 Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
+                <TextBlock Margin="2.5,0,0,5" Text="Model Name" FontFamily="Segoe UI Variable Text"  />
                 <ui:TextBox
                     Width="130"
                     Height="30"
@@ -159,7 +159,7 @@
                 Grid.Row="1"
                 Margin="15,10,0,0"
                 Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Temperature" />
+                <TextBlock Margin="2.5,0,0,5" Text="Temperature" FontFamily="Segoe UI Variable Text"  />
                 <ui:NumberBox
                     Width="130"
                     Height="30"
