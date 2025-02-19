@@ -86,11 +86,11 @@
                 </LinearGradientBrush>
             </DataGrid.BorderBrush>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Time" Binding="{Binding Timestamp}" Width="*" FontFamily="Segoe UI Variable Text" MinWidth="80" />
+                <DataGridTextColumn Header="Time" Binding="{Binding Timestamp}" Width="*" FontFamily="Segoe UI Variable Text" MinWidth="80" MaxWidth="80" />
                 <DataGridTextColumn Header="Source" Binding="{Binding SourceText}" Width="3*" FontFamily="Segoe UI Variable Text" />
                 <DataGridTextColumn Header="Translated" Binding="{Binding TranslatedText}" Width="3*" FontFamily="Segoe UI Variable Text Semibold" />
-                <DataGridTextColumn Header="Target" Binding="{Binding TargetLanguage}" Width="40" FontFamily="Segoe UI Variable Text" MinWidth="50" />
-                <DataGridTextColumn Header="API" Binding="{Binding ApiUsed}" Width="*" FontFamily="Segoe UI Variable Text" />
+                <DataGridTextColumn Header="Target" Binding="{Binding TargetLanguage}" Width="40" FontFamily="Segoe UI Variable Text" MinWidth="50" MaxWidth="50" />
+                <DataGridTextColumn Header="API" Binding="{Binding ApiUsed}" Width="*" FontFamily="Segoe UI Variable Text" MaxWidth="105" />
             </DataGrid.Columns>
         </DataGrid>
     </Grid>

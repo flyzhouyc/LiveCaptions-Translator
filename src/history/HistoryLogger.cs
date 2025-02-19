@@ -72,13 +72,15 @@ namespace LiveCaptionsTranslator.models
                 await connection.OpenAsync();
 
                 // Get max page
-                string selectQuery = "SELECT COUNT() AS maxPage FROM TranslationHistory";
-                using (var command = new SQLiteCommand(selectQuery, connection))
+                using (var command = new SQLiteCommand("SELECT COUNT() AS maxPage FROM TranslationHistory", connection))
                 maxPage = Convert.ToInt32(command.ExecuteScalar()) / maxRow;
 
                 // Get table
-                selectQuery = "SELECT Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed FROM TranslationHistory ORDER BY Id DESC LIMIT " + maxRow + " OFFSET " + ((page * maxRow) - maxRow);
-                using (var command = new SQLiteCommand(selectQuery, connection))
+                using (var command = new SQLiteCommand(@"
+                    SELECT Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed
+                    FROM TranslationHistory
+                    ORDER BY Id DESC
+                    LIMIT " + maxRow + " OFFSET " + ((page * maxRow) - maxRow), connection))
                 using (var reader = await command.ExecuteReaderAsync())
                 {
                     while (await reader.ReadAsync())
