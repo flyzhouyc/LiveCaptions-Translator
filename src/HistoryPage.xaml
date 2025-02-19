@@ -4,21 +4,70 @@
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:local="clr-namespace:LiveCaptionsTranslator"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       mc:Ignorable="d"
-      Title="HistoryPage" Height="450" Width="800">
-    <Grid>
+      Title="HistoryPage" Height="450" VerticalAlignment="Top" HorizontalAlignment="Left">
+    <Grid VerticalAlignment="Top">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="3,5,3,0" MaxHeight="34.94">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <ui:Button
+                    x:Name="Delete"
+                    Appearance="Transparent"
+                    Click="RemoveLogs"
+                    Icon="{ui:SymbolIcon Delete12  ,
+                Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" />
+                
+                <ui:Button
+                    x:Name="Previous"
+                    Appearance="Transparent"
+                    Click="PageDown"
+                    Icon="{ui:SymbolIcon ArrowPrevious12,
+                    Filled=False}" MouseOverBackground="#07000000" Margin="5,0,0,0" />
+
+                <TextBlock
+                    x:Name="PageNamber"
+                    FontSize="15"
+                    Margin="10,0,10,0"
+                    Text="1" VerticalAlignment="Center" />
+
+                <ui:Button
+                    x:Name="Next"
+                    Appearance="Transparent"
+                    Click="PageUp"
+                    Icon="{ui:SymbolIcon ArrowNext12,
+                Filled=False}" MouseOverBackground="#07000000" />
+
+                <ComboBox
+                    x:Name="MaxRowBox"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Margin="5,0,0,0" SelectionChanged="maxRow_SelectionChanged" MinHeight="0" HorizontalAlignment="Left" VerticalAlignment="Stretch" FontFamily="Segoe UI Variable Text" 
+                    >
+                    <ComboBoxItem Content="20/page" FontFamily="Segoe UI Variable Text" Tag="20"/>
+                    <ComboBoxItem Content="30/page" FontFamily="Segoe UI Variable Text" Tag="30"/>
+                    <ComboBoxItem Content="50/page" FontFamily="Segoe UI Variable Text" Tag="50"/>
+                    <ComboBoxItem Content="100/page" FontFamily="Segoe UI Variable Text" Tag="100"/>
+                </ComboBox>
+            </StackPanel>
+        </Grid>
+
         <DataGrid x:Name="HistoryDataGrid" 
+                  Grid.Row="1"
                   AutoGenerateColumns="False" 
                   IsReadOnly="True"
-                  HorizontalAlignment="Stretch"
                   VerticalAlignment="Stretch"
-                  Margin="10">
+                  Margin="0,5,0,0" BorderThickness="0,0,0,0" FontFamily="Segoe UI Variable Text Semibold">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Timestamp" Binding="{Binding Timestamp}" Width="*" />
-                <DataGridTextColumn Header="Source Text" Binding="{Binding SourceText}" Width="2*" />
-                <DataGridTextColumn Header="Translated Text" Binding="{Binding TranslatedText}" Width="2*" />
-                <DataGridTextColumn Header="Target Language" Binding="{Binding TargetLanguage}" Width="*" />
-                <DataGridTextColumn Header="API Used" Binding="{Binding ApiUsed}" Width="*" />
+                <DataGridTextColumn Header="Time" Binding="{Binding Timestamp}" Width="*" FontFamily="Segoe UI Variable Text" MinWidth="150" />
+                <DataGridTextColumn Header="Source" Binding="{Binding SourceText}" Width="2*" FontFamily="Segoe UI Variable Text" />
+                <DataGridTextColumn Header="Translated" Binding="{Binding TranslatedText}" Width="3*" FontFamily="Segoe UI Variable Text Semibold" />
+                <DataGridTextColumn Header="Target" Binding="{Binding TargetLanguage}" Width="40" FontFamily="Segoe UI Variable Text" MinWidth="50" />
+                <DataGridTextColumn Header="API" Binding="{Binding ApiUsed}" Width="*" FontFamily="Segoe UI Variable Text" />
             </DataGrid.Columns>
         </DataGrid>
     </Grid>
