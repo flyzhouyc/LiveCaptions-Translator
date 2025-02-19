@@ -32,7 +32,7 @@
                 x:Name="OriginalCaption"
                 FontSize="15"
                 Text="{Binding Original}"
-                IsReadOnly="False"
+                IsReadOnly="True"
                 Background="Transparent"
                 BorderThickness="0"
                 AcceptsReturn="True"

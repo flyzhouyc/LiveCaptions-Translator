@@ -80,5 +80,10 @@ namespace LiveCaptionsTranslator
                 LoadHistoryAsync();;
             }
         }
+
+        private void ReloadLogs(object sender, RoutedEventArgs e)
+        {
+            LoadHistoryAsync();
+        }
     }
 }

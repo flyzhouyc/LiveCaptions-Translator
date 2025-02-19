@@ -52,7 +52,7 @@ namespace LiveCaptionsTranslator.models
 
                 using (var command = new SQLiteCommand(insertQuery, connection))
                 {
-                    command.Parameters.AddWithValue("@Timestamp", DateTime.Now.ToString("MM/dd hh:mm tt"));
+                    command.Parameters.AddWithValue("@Timestamp", DateTime.Now.ToString("MM/dd HH:mm"));
                     command.Parameters.AddWithValue("@SourceText", sourceText);
                     command.Parameters.AddWithValue("@TranslatedText", translatedText);
                     command.Parameters.AddWithValue("@TargetLanguage", targetLanguage);
