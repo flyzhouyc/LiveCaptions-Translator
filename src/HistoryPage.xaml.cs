@@ -40,18 +40,18 @@ namespace LiveCaptionsTranslator
             if (page-1 >= 1)
             {
                 page--;
-            }
+                LoadHistoryAsync();
 
-            LoadHistoryAsync();
+            }
         }
         void PageUp(object sender, RoutedEventArgs e)
         {
             if (page < maxPage)
             {
                 page++;
+                LoadHistoryAsync();
+
             }
-            
-            LoadHistoryAsync();
         }
 
         void RemoveLogs(object sender, RoutedEventArgs e)
