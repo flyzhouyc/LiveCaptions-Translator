@@ -14,59 +14,59 @@
         </Grid.RowDefinitions>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Grid.Row="0" Margin="3,5,3,0" MaxHeight="34.94">
-            <ui:Button
-                x:Name="Delete"
-                Appearance="Transparent"
-                Click="RemoveLogs"
-                Icon="{ui:SymbolIcon Delete12,
-            Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" />
+                <ui:Button
+                    x:Name="Delete"
+                    Appearance="Transparent"
+                    Click="RemoveLogs"
+                    Icon="{ui:SymbolIcon Delete12,
+                Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" Margin="15,0,0,0" />
 
-            <ui:Button
-                x:Name="Refresh" 
-                Appearance="Transparent"
-                Click="ReloadLogs"
-                Icon="{ui:SymbolIcon ArrowClockwise12    ,
-                Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" Margin="5,0,0,0"/>
+                <ui:Button
+                    x:Name="Refresh" 
+                    Appearance="Transparent"
+                    Click="ReloadLogs"
+                    Icon="{ui:SymbolIcon ArrowClockwise12    ,
+                    Filled=False}" HorizontalAlignment="Right" MouseOverBackground="#07000000" Margin="5,0,0,0"/>
 
-            <ui:Button
-                x:Name="Previous"
-                Appearance="Transparent"
-                Click="PageDown"
-                Icon="{ui:SymbolIcon ArrowPrevious12,
-                Filled=False}" MouseOverBackground="#07000000" Margin="5,0,0,0" />
+                <ui:Button
+                    x:Name="Previous"
+                    Appearance="Transparent"
+                    Click="PageDown"
+                    Icon="{ui:SymbolIcon ArrowPrevious12,
+                    Filled=False}" MouseOverBackground="#07000000" Margin="5,0,0,0" />
 
-            <TextBlock
-                x:Name="PageNamber"
-                FontSize="15"
-                Margin="10,0,10,0"
-                Text="1" VerticalAlignment="Center" />
+                <TextBlock
+                    x:Name="PageNamber"
+                    FontSize="15"
+                    Margin="10,0,10,0"
+                    Text="1" VerticalAlignment="Center" />
 
-            <ui:Button
-                x:Name="Next"
-                Appearance="Transparent"
-                Click="PageUp"
-                Icon="{ui:SymbolIcon ArrowNext12,
-            Filled=False}" MouseOverBackground="#07000000" />
+                <ui:Button
+                    x:Name="Next"
+                    Appearance="Transparent"
+                    Click="PageUp"
+                    Icon="{ui:SymbolIcon ArrowNext12,
+                Filled=False}" MouseOverBackground="#07000000" />
 
-            <ComboBox
-                x:Name="MaxRowBox"
-                Padding="10,4,10,7"
-                FontSize="13.3"
-                Margin="5,0,0,0" SelectionChanged="maxRow_SelectionChanged" MinHeight="0" HorizontalAlignment="Left" VerticalAlignment="Stretch" FontFamily="Segoe UI Variable Text" 
-                >
-                <ComboBoxItem Content="20/page" FontFamily="Segoe UI Variable Text" Tag="20"/>
-                <ComboBoxItem Content="30/page" FontFamily="Segoe UI Variable Text" Tag="30"/>
-                <ComboBoxItem Content="50/page" FontFamily="Segoe UI Variable Text" Tag="50"/>
-                <ComboBoxItem Content="100/page" FontFamily="Segoe UI Variable Text" Tag="100"/>
-            </ComboBox>
-        </StackPanel>
+                <ComboBox
+                    x:Name="MaxRowBox"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Margin="5,0,0,0" SelectionChanged="maxRow_SelectionChanged" MinHeight="0" HorizontalAlignment="Left" VerticalAlignment="Stretch" FontFamily="Segoe UI Variable Text" 
+                    >
+                    <ComboBoxItem Content="20/page" FontFamily="Segoe UI Variable Text" Tag="20"/>
+                    <ComboBoxItem Content="30/page" FontFamily="Segoe UI Variable Text" Tag="30"/>
+                    <ComboBoxItem Content="50/page" FontFamily="Segoe UI Variable Text" Tag="50"/>
+                    <ComboBoxItem Content="100/page" FontFamily="Segoe UI Variable Text" Tag="100"/>
+                </ComboBox>
+            </StackPanel>
 
         <DataGrid x:Name="HistoryDataGrid" 
                   Grid.Row="1"
                   AutoGenerateColumns="False" 
                   IsReadOnly="True"
                   VerticalAlignment="Stretch"
-                  Margin="0,5,0,0" BorderThickness="0,0,0,0" FontFamily="Segoe UI Variable Text Semibold" GridLinesVisibility="Horizontal">
+                  Margin="15,5,20,0" BorderThickness="0,0,0,0" FontFamily="Segoe UI Variable Text Semibold" GridLinesVisibility="Horizontal">
             <DataGrid.VerticalGridLinesBrush>
                 <LinearGradientBrush EndPoint="0,3" MappingMode="Absolute">
                     <GradientStop Color="#18FFFFFF" Offset="0.33"/>
