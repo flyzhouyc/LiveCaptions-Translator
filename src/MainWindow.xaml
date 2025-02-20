@@ -9,14 +9,14 @@
     Title="LiveCaptionsTranslator"
     Width="750"
     Height="167"
+    MinHeight="250"
     Background="Transparent"
     ExtendsContentIntoTitleBar="True"
-    ResizeMode="CanResizeWithGrip"
     Topmost="True"
     WindowBackdropType="Mica"
     WindowStartupLocation="Manual"
     WindowStyle="None"
-    mc:Ignorable="d" MinHeight="250">
+    mc:Ignorable="d">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -25,11 +25,13 @@
         </Grid.RowDefinitions>
 
         <ui:TitleBar
-            Title="LiveCaptionsTranslator"
             Grid.Row="0"
             Height="27"
             ShowMaximize="False">
             <ui:TitleBar.Header>
+                <ui:TextBlock Padding="15,0,0,0" VerticalAlignment="Center">LiveCaptionsTranslator</ui:TextBlock>
+            </ui:TitleBar.Header>
+            <ui:TitleBar.TrailingContent>
                 <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                     <ui:Button
                         x:Name="pause"
@@ -43,17 +45,17 @@
                         x:Name="subtitleMode"
                         Margin="0,0,5,0"
                         Appearance="Transparent"
-                        Click="SubtitleModeButton_Click"
+                        Click="OverloySubtitleModeButton_Click"
                         Icon="{ui:SymbolIcon TextT24,
                                              Filled=False}" />
                     <ui:Button
                         x:Name="translationOnlyMode"
                         Margin="0,0,5,0"
                         Appearance="Transparent"
-                        Click="TranslationOnlyButton_Click"
+                        Click="OverlayTranslationModeButton_Click"
                         Icon="{ui:SymbolIcon Document24,
                                              Filled=False}" />
-                    
+
                     <ui:Button
                         x:Name="topmost"
                         Margin="0,0,5,0"
@@ -62,7 +64,7 @@
                         Icon="{ui:SymbolIcon Pin24,
                                              Filled=True}" />
                 </StackPanel>
-            </ui:TitleBar.Header>
+            </ui:TitleBar.TrailingContent>
         </ui:TitleBar>
 
         <ui:NavigationView
@@ -77,21 +79,21 @@
                 <ui:NavigationViewItem
                     Margin="0,6,0,3"
                     Content="Caption"
-                    FontFamily="Segoe UI Variable Text Semibold" 
-                    Icon="{ui:SymbolIcon Home24}"   
+                    FontFamily="Segoe UI Variable Text Semibold"
+                    Icon="{ui:SymbolIcon Home24}"
                     NavigationCacheMode="Enabled"
                     TargetPageType="{x:Type local:CaptionPage}" />
                 <ui:NavigationViewItem
                     Margin="0,3,0,0"
                     Content="History"
-                     FontFamily="Segoe UI Variable Text Semibold" 
+                    FontFamily="Segoe UI Variable Text Semibold"
                     Icon="{ui:SymbolIcon History24}"
                     NavigationCacheMode="Enabled"
                     TargetPageType="{x:Type local:HistoryPage}" />
                 <ui:NavigationViewItem
                     Margin="0,3,0,0"
                     Content="Setting"
-                     FontFamily="Segoe UI Variable Text Semibold" 
+                    FontFamily="Segoe UI Variable Text Semibold"
                     Icon="{ui:SymbolIcon Settings24}"
                     NavigationCacheMode="Enabled"
                     TargetPageType="{x:Type local:SettingPage}" />

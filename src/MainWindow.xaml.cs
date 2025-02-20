@@ -71,12 +71,14 @@ namespace LiveCaptionsTranslator
         }
 
         // TODO: Extract them into a new SubtitleWindow class.
-        void SubtitleModeButton_Click(object sender, RoutedEventArgs e)
+        void OverloySubtitleModeButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not WpfButton button || button.Icon is not SymbolIcon symbolIcon) return;
 
             if (subtitleWindow == null)
             {
+                OverlayTranslationModeClose();
+
                 subtitleWindow = new Window
                 {
                     Title = "Subtitle Mode",
@@ -280,19 +282,30 @@ namespace LiveCaptionsTranslator
             }
             else
             {
-                subtitleWindow.Close();
-                subtitleWindow = null;
-                symbolIcon.Filled = false;
+                SubtitleMode_Close();
             }
         }
 
+        void SubtitleMode_Close()
+        {
+            subtitleWindow?.Close();
+            subtitleWindow = null;
+
+            var button = subtitleMode as Button;
+            var symbolIcon = button?.Icon as SymbolIcon;
+            symbolIcon.Filled = false;
+        }
+
+
         // TODO: Extract them into a new SubtitleWindow class.
-        void TranslationOnlyButton_Click(object sender, RoutedEventArgs e)
+        void OverlayTranslationModeButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not WpfButton button || button.Icon is not SymbolIcon symbolIcon) return;
 
             if (translationOnlyWindow == null)
             {
+                SubtitleMode_Close();
+
                 translationOnlyWindow = new Window
                 {
                     Title = "Translation Only Mode",
@@ -428,10 +441,18 @@ namespace LiveCaptionsTranslator
             }
             else
             {
-                translationOnlyWindow.Close();
-                translationOnlyWindow = null;
-                symbolIcon.Filled = false;
+                OverlayTranslationModeClose();
             }
+        }
+
+        void OverlayTranslationModeClose()
+        {
+            translationOnlyWindow?.Close();
+            translationOnlyWindow = null;
+
+            var button = translationOnlyMode as Button;
+            var symbolIcon = button?.Icon as SymbolIcon;
+            symbolIcon.Filled = false;
         }
 
         protected override void OnClosed(EventArgs e)
