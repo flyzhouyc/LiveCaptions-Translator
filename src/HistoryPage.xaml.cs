@@ -27,7 +27,7 @@ namespace LiveCaptionsTranslator
             var data = await SQLiteHistoryLogger.LoadHistoryAsync(page, maxRow);
             List<TranslationHistoryEntry> history = data.Item1;
 
-            maxPage = data.Item2;
+            maxPage = (data.Item2 > 0) ? data.Item2 : 1;
             await Dispatcher.InvokeAsync(() =>
             {
                 HistoryDataGrid.ItemsSource = history;
