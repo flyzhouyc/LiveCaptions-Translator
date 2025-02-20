@@ -8,7 +8,9 @@ namespace LiveCaptionsTranslator.models.CaptionProviders
         private static readonly Dictionary<string, Func<ICaptionProvider>> _providers = new()
         {
             { "OpenAI", () => new OpenAICaptionProvider() },
-            { "Ollama", () => new OllamaCaptionProvider() }
+            { "Ollama", () => new OllamaCaptionProvider() },
+            { "GoogleTranslate", () => new GoogleTranslateCaptionProvider() },
+            { "OpenRouterTranslate", () => new OpenRouterCaptionProvider() }
         };
 
         /// <summary>
