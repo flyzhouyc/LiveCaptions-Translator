@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using LiveCaptionsTranslator.controllers;
 using LiveCaptionsTranslator.models.CaptionProviders;
 using LiveCaptionsTranslator.models.CaptionProcessing;
+using System.Text;
 
 
 namespace LiveCaptionsTranslator.models
@@ -22,6 +23,7 @@ namespace LiveCaptionsTranslator.models
         public event PropertyChangedEventHandler? PropertyChanged;
 
         private string original = "";
+        private string OriginalPrev = "";
         private string translated = "";
         private readonly Queue<CaptionHistoryItem> captionHistory = new(5);
         private ICaptionProvider _captionProvider;
@@ -35,6 +37,7 @@ namespace LiveCaptionsTranslator.models
 
         // 保留原有的公共属性
         public IEnumerable<CaptionHistoryItem> CaptionHistory => captionHistory.Reverse();
+        public static event Action? TranslationLogged;
         public bool PauseFlag { get; set; } = false;
         public bool TranslateFlag { get; set; } = false;
         private bool EOSFlag { get; set; } = false;
@@ -118,14 +121,58 @@ namespace LiveCaptionsTranslator.models
 
                     fullText = CaptionTextProcessor.ProcessFullText(fullText);
                     int lastEOSIndex = CaptionTextProcessor.GetLastEOSIndex(fullText);
-                    string latestCaption = CaptionTextProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
+                    var data = CaptionTextProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
+                    string latestCaption = data.Item1;
+                    bool HistoryCap = data.Item2;
 
                     if (Original.CompareTo(latestCaption) != 0)
                     {
+                        if (HistoryCap)
+                        {
+                            var lastHistory = captionHistory.LastOrDefault();
+                            string subOriginalHis = lastHistory?.Original.Substring(2, lastHistory.Original.Length - 4).ToLower() ?? "";
+                            string subOriginalPrev = OriginalPrev.Substring(2, OriginalPrev.Length - 4).ToLower();
+                            if (lastHistory == null ||
+                                subOriginalHis != subOriginalPrev)
+                            {
+                                var controller = new TranslationController();
+                                string translated = await controller.TranslateAndLogAsync(OriginalPrev);
+
+                                // Add history card
+                                if (captionHistory.Count >= 5)
+                                    captionHistory.Dequeue();
+                                captionHistory.Enqueue(new CaptionHistoryItem
+                                {
+                                    Original = OriginalPrev,
+                                    Translated = translated
+                                });
+                                OnPropertyChanged(nameof(CaptionHistory));
+
+                                // Insert sqlite history log
+                                string targetLanguage = App.Settings.TargetLanguage;
+                                string apiName = App.Settings.ApiName;
+
+                                try
+                                {
+                                    SQLiteHistoryLogger.LogTranslationAsync(OriginalPrev, translated, targetLanguage, apiName);
+                                    TranslationLogged?.Invoke();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[Error] Logging history failed: {ex.Message}");
+                                }
+                            }
+                        }
+
                         syncCount++;
                         Original = latestCaption;
                         TranslateFlag = CaptionTextProcessor.ShouldTriggerTranslation(latestCaption, ref syncCount, App.Settings.MaxSyncInterval);
                         EOSFlag = Array.IndexOf(CaptionTextProcessor.PUNC_EOS, latestCaption[^1]) != -1;
+
+                        if (!HistoryCap)
+                        {
+                            OriginalPrev = Original;
+                        }
                     }
 
                     await Task.Delay(_captionProvider.SupportsAdaptiveSync ? 30 : 50, token);
@@ -171,25 +218,6 @@ namespace LiveCaptionsTranslator.models
                     {
                         Translated = await controller.TranslateAndLogAsync(Original);
                         TranslateFlag = false;
-
-                        // Add to history
-                        if (!string.IsNullOrEmpty(Original) && !string.IsNullOrEmpty(Translated))
-                        {
-                            var lastHistory = captionHistory.LastOrDefault();
-                            if (lastHistory == null || 
-                                lastHistory.Original != Original || 
-                                lastHistory.Translated != Translated)
-                            {
-                                if (captionHistory.Count >= 5)
-                                    captionHistory.Dequeue();
-                                captionHistory.Enqueue(new CaptionHistoryItem 
-                                { 
-                                    Original = Original, 
-                                    Translated = Translated 
-                                });
-                                OnPropertyChanged(nameof(CaptionHistory));
-                            }
-                        }
 
                         if (EOSFlag)
                             await Task.Delay(1000, cancellationToken);

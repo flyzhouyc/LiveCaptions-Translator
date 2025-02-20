@@ -10,7 +10,7 @@
     Title="SettingPage"
     mc:Ignorable="d">
 
-    <Grid x:Name="PageGrid">
+    <Grid x:Name="PageGrid" Margin="15,15,15,15">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -18,17 +18,23 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Orientation="Vertical">
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="LiveCaptions Setting" />
+            <StackPanel Orientation="Vertical">
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="LiveCaptions Setting" />
                 <ui:Button
                     Width="145"
                     Height="30"
                     Click="Setting_Click">
-                    <TextBlock Text="Open" />
+                    <TextBlock FontFamily="Segoe UI Variable Text" Text="Open" />
                 </ui:Button>
             </StackPanel>
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Translation Interval" />
+            <StackPanel Margin="0,10,0,0" Orientation="Vertical">
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="Translation Interval" />
                 <StackPanel Orientation="Horizontal">
                     <Slider
                         Width="140"
@@ -42,8 +48,11 @@
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Vertical">
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Translate API" />
+            <StackPanel Margin="15,0,0,0" Orientation="Vertical">
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="Translate API" />
                 <ComboBox
                     x:Name="translateAPIBox"
                     Width="140"
@@ -54,7 +63,10 @@
                     SelectionChanged="translateAPIBox_SelectionChanged" />
             </StackPanel>
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Target Language" />
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="Target Language" />
                 <ComboBox
                     x:Name="targetLangBox"
                     Width="140"
@@ -78,7 +90,7 @@
             <StackPanel
                 Grid.Row="0"
                 Grid.Column="0"
-                Margin="15,10,0,0"
+                Margin="15,0,0,0"
                 Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
                 <ui:TextBox
@@ -108,9 +120,12 @@
             <StackPanel
                 Grid.Row="0"
                 Grid.Column="1"
-                Margin="15,10,0,0"
+                Margin="15,0,0,0"
                 Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="API Url" />
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="API Url" />
                 <ui:TextBox
                     Width="185"
                     Height="30"
@@ -123,7 +138,10 @@
                 Grid.Column="1"
                 Margin="15,10,0,0"
                 Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="API Key" />
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="API Key" />
                 <ui:TextBox
                     Width="185"
                     Height="30"
@@ -145,9 +163,12 @@
 
             <StackPanel
                 Grid.Row="0"
-                Margin="15,10,0,0"
+                Margin="15,0,0,0"
                 Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="Model Name" />
                 <ui:TextBox
                     Width="130"
                     Height="30"
@@ -157,6 +178,57 @@
             </StackPanel>
             <StackPanel
                 Grid.Row="1"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock
+                    Margin="2.5,0,0,5"
+                    FontFamily="Segoe UI Variable Text"
+                    Text="Temperature" />
+                <ui:NumberBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    LargeChange="1"
+                    Maximum="2"
+                    Minimum="0"
+                    SmallChange="0.1"
+                    Value="{Binding CurrentAPIConfig.Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid x:Name="GoogleTranslateGrid" Grid.Column="2" />
+
+        <Grid
+            x:Name="OpenRouterGrid"
+            Grid.Column="2"
+            Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="0"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
+                <ui:TextBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+
+            <StackPanel
+                Grid.Row="1"
+                Grid.Column="0"
                 Margin="15,10,0,0"
                 Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Temperature" />
@@ -171,9 +243,21 @@
                     SmallChange="0.1"
                     Value="{Binding CurrentAPIConfig.Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
+
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="1"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="API Key" />
+                <ui:TextBox
+                    Width="185"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
         </Grid>
-        
-        <Grid x:Name="GoogleTranslateGrid" Grid.Column="2" />
-        
+
     </Grid>
 </Page>
