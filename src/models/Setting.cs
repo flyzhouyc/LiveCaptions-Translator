@@ -89,6 +89,7 @@ namespace LiveCaptionsTranslator.models
                 { "Ollama", new OllamaConfig() },
                 { "OpenAI", new OpenAIConfig() },
                 { "GoogleTranslate", new GoogleTranslateConfig() },
+                { "OpenRouter", new OpenRouterConfig() },
             };
         }
 

@@ -132,6 +132,20 @@ namespace LiveCaptionsTranslator.models
         }
     }
 
+    public class OpenRouterConfig : OllamaConfig
+    {
+        private string apiKey = "";
+        public string ApiKey
+        {
+            get => apiKey;
+            set
+            {
+                apiKey = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public class GoogleTranslateConfig : TranslateAPIConfig
     {
         private static readonly Dictionary<string, string> SUPPORTED_LANGUAGES = new()
