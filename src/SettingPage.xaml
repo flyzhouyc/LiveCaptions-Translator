@@ -10,7 +10,7 @@
     Title="SettingPage"
     mc:Ignorable="d">
 
-    <Grid x:Name="PageGrid">
+    <Grid x:Name="PageGrid" Margin="15,15,15,15">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -18,7 +18,7 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Orientation="Vertical">
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+            <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="LiveCaptions Setting" />
                 <ui:Button
                     Width="145"
@@ -47,19 +47,19 @@
                         Margin="0,0,5,0"
                         AutoToolTipPlacement="TopLeft"
                         AutoToolTipPrecision="0"
-                        Minimum="5"
                         Maximum="30"
+                        Minimum="5"
                         Value="{Binding MinTranslationLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
             </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Vertical">
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+            <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Translate API" />
                 <ComboBox
                     x:Name="translateAPIBox"
-                    Width="140"
+                    Width="155"
                     Height="30"
                     Padding="10,4,10,7"
                     FontSize="13.3"
@@ -70,7 +70,7 @@
                 <TextBlock Margin="2.5,0,0,5" Text="Target Language" />
                 <ComboBox
                     x:Name="targetLangBox"
-                    Width="140"
+                    Width="155"
                     Height="30"
                     Padding="10,4,10,7"
                     FontSize="13.3"
@@ -91,7 +91,7 @@
             <StackPanel
                 Grid.Row="0"
                 Grid.Column="0"
-                Margin="15,10,0,0"
+                Margin="15,0,0,0"
                 Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
                 <ui:TextBox
@@ -121,7 +121,7 @@
             <StackPanel
                 Grid.Row="0"
                 Grid.Column="1"
-                Margin="15,10,0,0"
+                Margin="15,0,0,0"
                 Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="API Url" />
                 <ui:TextBox
@@ -158,7 +158,7 @@
 
             <StackPanel
                 Grid.Row="0"
-                Margin="15,10,0,0"
+                Margin="15,0,0,0"
                 Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
                 <ui:TextBox
@@ -185,8 +185,8 @@
                     Value="{Binding CurrentAPIConfig.Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
         </Grid>
-        
+
         <Grid x:Name="GoogleTranslateGrid" Grid.Column="2" />
-        
+
     </Grid>
 </Page>

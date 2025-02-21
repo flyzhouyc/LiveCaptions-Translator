@@ -24,9 +24,10 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
                 : fullText.LastIndexOfAny(PUNC_EOS);
         }
 
-        public static string ExtractLatestCaption(string fullText, int lastEOSIndex)
+        public static (string, bool) ExtractLatestCaption(string fullText, int lastEOSIndex)
         {
-            if (lastEOSIndex < -1) return fullText;
+            bool HistoryCap = false;
+            if (lastEOSIndex < -1) return (fullText, false);
             
             string latestCaption = fullText.Substring(lastEOSIndex + 1);
 
@@ -35,6 +36,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             {
                 lastEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(PUNC_EOS);
                 latestCaption = fullText.Substring(lastEOSIndex + 1);
+                HistoryCap = true;
             }
 
             while (Encoding.UTF8.GetByteCount(latestCaption) > 170)
@@ -43,9 +45,10 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
                 if (commaIndex < 0 || commaIndex + 1 == latestCaption.Length)
                     break;
                 latestCaption = latestCaption.Substring(commaIndex + 1);
+                HistoryCap = true;
             }
 
-            return latestCaption;
+            return (latestCaption, HistoryCap);
         }
 
         public static bool ShouldTriggerTranslation(string caption, ref int syncCount, int maxSyncInterval)

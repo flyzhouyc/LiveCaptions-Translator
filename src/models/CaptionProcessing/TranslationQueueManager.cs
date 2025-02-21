@@ -61,7 +61,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             };
 
             _translationQueue.Enqueue(translationItem);
-            
+
             try
             {
                 // 使用更长的超时时间
@@ -71,13 +71,13 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
                 var translationTask = translationItem.CompletionSource.Task;
                 var timeoutTask = Task.Delay(TRANSLATION_TIMEOUT_MS, linkedCts.Token);
-                
+
                 var completedTask = await Task.WhenAny(translationTask, timeoutTask);
                 if (completedTask == translationTask)
                 {
                     return await translationTask;
                 }
-                
+
                 // 超时但保留原文
                 return text;
             }
@@ -93,7 +93,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             while (!_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 TranslationItem? translationItem = null;
-                
+
                 try
                 {
                     if (_translationQueue.TryDequeue(out translationItem))
