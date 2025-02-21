@@ -84,7 +84,7 @@ public static string ExtractLatestCaption(string fullText, int lastEOSIndex)
 private static readonly HashSet<char> PUNC_EOS_SET = new HashSet<char>(PUNC_EOS);
 private static readonly HashSet<char> PUNC_COMMA_SET = new HashSet<char>(PUNC_COMMA);
 
-public static bool ShouldTriggerTranslation(string caption, ref int syncCount, int maxSyncInterval)
+public static bool ShouldTriggerTranslation(string caption, ref int syncCount, int maxSyncInterval, int minTranslationLength)
 {
     bool shouldTranslate = false;
 
@@ -95,6 +95,11 @@ public static bool ShouldTriggerTranslation(string caption, ref int syncCount, i
         shouldTranslate = true;
     }
     else if (syncCount > maxSyncInterval)
+    {
+        syncCount = 0;
+        shouldTranslate = true;
+    }
+    else if (caption.Length >= minTranslationLength)
     {
         syncCount = 0;
         shouldTranslate = true;

@@ -30,26 +30,27 @@
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Translation Interval" />
                 <StackPanel Orientation="Horizontal">
-                    <Slider
-                        Width="140"
-                        Margin="0,0,5,0"
-                        AutoToolTipPlacement="TopLeft"
-                        AutoToolTipPrecision="0"
-                        Maximum="40"
-                        Value="{Binding MaxSyncInterval, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+<Slider
+    Width="140"
+    Margin="0,0,5,0"
+    AutoToolTipPlacement="TopLeft"
+    AutoToolTipPrecision="0"
+    Minimum="0"
+    Maximum="40"
+    Value="{Binding MaxSyncInterval, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
             </StackPanel>
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Min Translation Length" />
                 <StackPanel Orientation="Horizontal">
-                    <Slider
-                        Width="140"
-                        Margin="0,0,5,0"
-                        AutoToolTipPlacement="TopLeft"
-                        AutoToolTipPrecision="0"
-                        Minimum="5"
-                        Maximum="30"
-                        Value="{Binding MinTranslationLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+<Slider
+    Width="140"
+    Margin="0,0,5,0"
+    AutoToolTipPlacement="TopLeft"
+    AutoToolTipPrecision="0"
+    Minimum="0"
+    Maximum="200"
+    Value="{Binding MinTranslationLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
             </StackPanel>
         </StackPanel>

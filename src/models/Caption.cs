@@ -105,63 +105,92 @@ namespace LiveCaptionsTranslator.models
             // Combine external token with internal token if available
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
             var token = combinedCts.Token;
-            int syncCount = 0;
+int syncCount = 0;
+int lastTranslationTime = Environment.TickCount;
 
-            Console.WriteLine($"Starting sync with provider: {_captionProvider.ProviderName}");
+Console.WriteLine($"Starting sync with provider: {_captionProvider.ProviderName}");
 
-            try
+try
+{
+    while (!token.IsCancellationRequested)
+    {
+        if (PauseFlag || App.Window == null)
+        {
+            await Task.Delay(50, token);
+            continue;
+        }
+
+        try
+        {
+            string fullText = (await _captionProvider.GetCaptionsAsync(App.Window, token)).Trim();
+            if (string.IsNullOrEmpty(fullText))
             {
-                while (!token.IsCancellationRequested)
+                await Task.Delay(50, token);
+                continue;
+            }
+
+            fullText = CaptionTextProcessor.ProcessFullText(fullText);
+            int lastEOSIndex = CaptionTextProcessor.GetLastEOSIndex(fullText);
+            string latestCaption = CaptionTextProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
+
+            if (Original.CompareTo(latestCaption) != 0)
+            {
+                syncCount++;
+                Original = latestCaption;
+                int currentTime = Environment.TickCount;
+                int timeSinceLastTranslation = currentTime - lastTranslationTime;
+
+                // 动态调整 MinTranslationLength
+                int dynamicMinTranslationLength = CalculateDynamicMinTranslationLength(timeSinceLastTranslation);
+
+                TranslateFlag = CaptionTextProcessor.ShouldTriggerTranslation(latestCaption, ref syncCount, App.Settings.MaxSyncInterval, dynamicMinTranslationLength);
+                EOSFlag = Array.IndexOf(CaptionTextProcessor.PUNC_EOS, latestCaption[^1]) != -1;
+
+                if (TranslateFlag)
                 {
-                    if (PauseFlag || App.Window == null)
-                    {
-                        await Task.Delay(50, token);
-                        continue;
-                    }
-
-                    try
-                    {
-                        string fullText = (await _captionProvider.GetCaptionsAsync(App.Window, token)).Trim();
-                        if (string.IsNullOrEmpty(fullText))
-                        {
-                            await Task.Delay(50, token);
-                            continue;
-                        }
-
-                        fullText = CaptionTextProcessor.ProcessFullText(fullText);
-                        int lastEOSIndex = CaptionTextProcessor.GetLastEOSIndex(fullText);
-                        string latestCaption = CaptionTextProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
-
-                        if (Original.CompareTo(latestCaption) != 0)
-                        {
-                            syncCount++;
-                            Original = latestCaption;
-                            TranslateFlag = CaptionTextProcessor.ShouldTriggerTranslation(latestCaption, ref syncCount, App.Settings.MaxSyncInterval);
-                            EOSFlag = Array.IndexOf(CaptionTextProcessor.PUNC_EOS, latestCaption[^1]) != -1;
-                        }
-
-                        await Task.Delay(_captionProvider.SupportsAdaptiveSync ? 30 : 50, token);
-                    }
-                    catch (OperationCanceledException) when (token.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Sync error: {ex.Message}");
-                        await Task.Delay(50, token);
-                    }
+                    lastTranslationTime = currentTime;
                 }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
-            {
-                Console.WriteLine("Caption sync cancelled");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Critical sync error: {ex.Message}");
-                throw;
-            }
+
+            await Task.Delay(_captionProvider.SupportsAdaptiveSync ? 30 : 50, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Sync error: {ex.Message}");
+            await Task.Delay(50, token);
+        }
+    }
+}
+catch (OperationCanceledException) when (token.IsCancellationRequested)
+{
+    Console.WriteLine("Caption sync cancelled");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Critical sync error: {ex.Message}");
+    throw;
+}
+
+private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
+{
+    // 根据时间间隔动态调整 MinTranslationLength
+    if (timeSinceLastTranslation < 1000) // 1 秒内
+    {
+        return 80; // 减少到 80 个字符
+    }
+    else if (timeSinceLastTranslation < 3000) // 3 秒内
+    {
+        return 100; // 减少到 100 个字符
+    }
+    else
+    {
+        return App.Settings.MinTranslationLength; // 使用默认值 120 个字符
+    }
+}
         }
 
         public async Task TranslateAsync(CancellationToken cancellationToken = default)
