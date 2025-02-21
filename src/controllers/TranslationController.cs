@@ -59,19 +59,6 @@ namespace LiveCaptionsTranslator.controllers
                 Console.WriteLine($"[Error] Translation failed: {ex.Message}");
                 return $"[Translation Failed] {ex.Message}";
             }
-            
-            if (!string.IsNullOrEmpty(translatedText))
-            {
-                try
-                {
-                    await SQLiteHistoryLogger.LogTranslationAsync(completeSentence, translatedText, targetLanguage, apiName);
-                    TranslationLogged?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Error] Logging history failed: {ex.Message}");
-                }
-            }
 
             return translatedText;
         }
