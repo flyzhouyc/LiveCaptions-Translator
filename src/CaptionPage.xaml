@@ -26,6 +26,7 @@
 
         <ui:Card
             Grid.Row="0"
+            MinHeight="110"
             Padding="8"
             VerticalAlignment="Stretch">
 
