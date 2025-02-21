@@ -26,6 +26,7 @@ namespace LiveCaptionsTranslator.models
         private readonly Queue<CaptionHistoryItem> captionHistory = new(5);
         private ICaptionProvider _captionProvider;
         private CancellationTokenSource? _syncCts;
+        private TranslationQueueManager? _translationQueueManager;
 
         public class CaptionHistoryItem
         {
@@ -146,8 +147,7 @@ namespace LiveCaptionsTranslator.models
                                 if (lastHistory == null ||
                                     subOriginalHis != subOriginalPrev)
                                 {
-                                    var controller = new TranslationController();
-                                    string translated = await controller.TranslateAndLogAsync(OriginalPrev);
+                                    string translated = await _translationQueueManager.EnqueueTranslationAsync(OriginalPrev);
 
                                     // Add history card
                                     if (captionHistory.Count >= 5)
@@ -213,7 +213,8 @@ namespace LiveCaptionsTranslator.models
         public async Task TranslateAsync(CancellationToken cancellationToken = default)
         {
             var controller = new TranslationController();
-            Console.WriteLine("Starting translation task");
+            _translationQueueManager = new TranslationQueueManager(controller);
+            Console.WriteLine("Starting translation task with queue manager");
 
             try
             {
@@ -239,24 +240,16 @@ namespace LiveCaptionsTranslator.models
                     {
                         if (TranslateFlag)
                         {
-                            string translatedResult = await controller.TranslateAndLogAsync(Original);
-                            
-                            // 如果有翻译结果，或者累积的文本足够长
-                            if (!string.IsNullOrEmpty(translatedResult))
-                            {
-                                Translated = translatedResult;
-                                TranslateFlag = false;
-                            }
-                            else
-                            {
-                                // 如果没有翻译结果，但仍然需要触发翻译，保持TranslateFlag为true
-                                await Task.Delay(100, cancellationToken);
-                                continue;
-                            }
+                            string translatedResult = await _translationQueueManager.EnqueueTranslationAsync(Original);
 
-                            // 对于完整句子，增加延迟以模拟句子处理时间
+                            // 总是更新翻译结果，因为即使翻译失败也会返回原文
+                            Translated = translatedResult;
+                            TranslateFlag = false;
+
+
+                            // 对于完整句子，增加短暂延迟
                             if (EOSFlag)
-                                await Task.Delay(1000, cancellationToken);
+                                await Task.Delay(100, cancellationToken);
                         }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -268,8 +261,8 @@ namespace LiveCaptionsTranslator.models
                         Console.WriteLine($"Translation error: {ex.Message}");
                     }
 
-                    // 增加延迟以减少CPU使用
-                    await Task.Delay(100, cancellationToken);
+                    // 减少延迟以提高响应速度
+                    await Task.Delay(10, cancellationToken);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -280,6 +273,10 @@ namespace LiveCaptionsTranslator.models
             {
                 Console.WriteLine($"Critical translation error: {ex.Message}");
                 throw;
+            }
+            finally
+            {
+                _translationQueueManager?.Dispose();
             }
         }
 
@@ -300,6 +297,7 @@ namespace LiveCaptionsTranslator.models
                 _syncCts?.Dispose();
                 _syncCts = null;
                 instance = null;
+                _translationQueueManager?.Dispose();
             }
         }
     }
