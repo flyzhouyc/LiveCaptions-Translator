@@ -19,6 +19,17 @@ namespace LiveCaptionsTranslator.models
         private int maxIdleInterval = 10;
         private int maxSyncInterval = 5;
         private int minTranslationLength = 10;
+        private int historyMaxRow = 1;
+
+        public int HistoryMaxRow
+        {
+            get => historyMaxRow;
+            set
+            {
+                historyMaxRow = value;
+                OnPropertyChanged("HistoryMaxRow");
+            }
+        }
 
         public int MinTranslationLength
         {

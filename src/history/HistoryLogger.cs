@@ -6,7 +6,7 @@ namespace LiveCaptionsTranslator.models
 {
     public class TranslationHistoryEntry
     {
-        public DateTime Timestamp { get; set; }
+        public string Timestamp { get; set; }
         public string SourceText { get; set; }
         public string TranslatedText { get; set; }
         public string TargetLanguage { get; set; }
@@ -45,12 +45,13 @@ namespace LiveCaptionsTranslator.models
             {
                 await connection.OpenAsync();
                 string insertQuery = @"
-            INSERT INTO TranslationHistory (Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed)
-            VALUES (@Timestamp, @SourceText, @TranslatedText, @TargetLanguage, @ApiUsed)";
+                    INSERT INTO TranslationHistory (Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed)
+                    VALUES (@Timestamp, @SourceText, @TranslatedText, @TargetLanguage, @ApiUsed)"
+                ;
 
                 using (var command = new SQLiteCommand(insertQuery, connection))
                 {
-                    command.Parameters.AddWithValue("@Timestamp", DateTime.Now);
+                    command.Parameters.AddWithValue("@Timestamp", DateTime.Now.ToString("MM/dd HH:mm"));
                     command.Parameters.AddWithValue("@SourceText", sourceText);
                     command.Parameters.AddWithValue("@TranslatedText", translatedText);
                     command.Parameters.AddWithValue("@TargetLanguage", targetLanguage);
@@ -60,23 +61,32 @@ namespace LiveCaptionsTranslator.models
             }
         }
 
-        public static async Task<List<TranslationHistoryEntry>> LoadHistoryAsync()
+        public static async Task<(List<TranslationHistoryEntry>, int)> LoadHistoryAsync(int page, int maxRow)
         {
             var history = new List<TranslationHistoryEntry>();
+            int maxPage = 1;
 
             using (var connection = new SQLiteConnection(ConnectionString))
             {
                 await connection.OpenAsync();
-                string selectQuery = "SELECT Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed FROM TranslationHistory";
 
-                using (var command = new SQLiteCommand(selectQuery, connection))
+                // Get max page
+                using (var command = new SQLiteCommand("SELECT COUNT() AS maxPage FROM TranslationHistory", connection))
+                    maxPage = Convert.ToInt32(command.ExecuteScalar()) / maxRow;
+
+                // Get table
+                using (var command = new SQLiteCommand(@"
+                    SELECT Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed
+                    FROM TranslationHistory
+                    ORDER BY Id DESC
+                    LIMIT " + maxRow + " OFFSET " + ((page * maxRow) - maxRow), connection))
                 using (var reader = await command.ExecuteReaderAsync())
                 {
                     while (await reader.ReadAsync())
                     {
                         history.Add(new TranslationHistoryEntry
                         {
-                            Timestamp = reader.GetDateTime(reader.GetOrdinal("Timestamp")),
+                            Timestamp = reader.GetString(reader.GetOrdinal("Timestamp")),
                             SourceText = reader.GetString(reader.GetOrdinal("SourceText")),
                             TranslatedText = reader.GetString(reader.GetOrdinal("TranslatedText")),
                             TargetLanguage = reader.GetString(reader.GetOrdinal("TargetLanguage")),
@@ -85,7 +95,18 @@ namespace LiveCaptionsTranslator.models
                     }
                 }
             }
-            return history;
+            return (history, maxPage);
+        }
+
+        public static async Task ClearHistory()
+        {
+            await Task.Run(() =>
+            {
+                using var connection = new SQLiteConnection(ConnectionString);
+                connection.Open();
+                using var command = new SQLiteCommand("DELETE FROM TranslationHistory", connection);
+                command.ExecuteNonQuery();
+            });
         }
     }
 }
