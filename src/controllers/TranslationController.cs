@@ -25,9 +25,9 @@ public async Task<string> TranslateAndLogAsync(string text)
     // 如果没有完整句子，更新累积句子
     if (completeSentence == null)
     {
-        StringBuilder sb = new StringBuilder(_accumulatedSentence ?? "");
-        sb.Append(" ").Append(text).TrimEnd();
-        _accumulatedSentence = sb.ToString();
+StringBuilder sb = new StringBuilder(_accumulatedSentence ?? "");
+sb.Append(" ").Append(text);
+_accumulatedSentence = sb.ToString().TrimEnd();
                 
         // 如果累积文本已经足够长，强制翻译
         if (_accumulatedSentence.Length >= minTranslationLength)
