@@ -12,8 +12,9 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         private readonly SemaphoreSlim _translationSemaphore;
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly TranslationController _translationController;
-        private const int MAX_QUEUE_SIZE = 10;
-        private const int DEFAULT_CONCURRENT_TRANSLATIONS = 3;
+        private const int MAX_QUEUE_SIZE = 20;  // 增加队列大小
+        private const int DEFAULT_CONCURRENT_TRANSLATIONS = 2;  // 减少并发数以确保稳定性
+        private const int TRANSLATION_TIMEOUT_MS = 2000;  // 增加超时时间
         private bool _disposed;
 
         public class TranslationItem
@@ -21,6 +22,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             public string Text { get; set; }
             public DateTime Timestamp { get; set; }
             public TaskCompletionSource<string> CompletionSource { get; set; }
+            public bool IsProcessing { get; set; }
         }
 
         public TranslationQueueManager(TranslationController controller)
@@ -36,10 +38,15 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
         public async Task<string> EnqueueTranslationAsync(string text)
         {
-            // Remove old items if queue is too large
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            // 只在队列已满时移除最旧的未处理项
             while (_translationQueue.Count >= MAX_QUEUE_SIZE)
             {
-                if (_translationQueue.TryDequeue(out var oldItem))
+                if (_translationQueue.TryDequeue(out var oldItem) && !oldItem.IsProcessing)
                 {
                     oldItem.CompletionSource.TrySetCanceled();
                 }
@@ -49,24 +56,35 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             {
                 Text = text,
                 Timestamp = DateTime.UtcNow,
-                CompletionSource = new TaskCompletionSource<string>()
+                CompletionSource = new TaskCompletionSource<string>(),
+                IsProcessing = false
             };
 
             _translationQueue.Enqueue(translationItem);
             
-            // Set timeout for translation
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                timeoutCts.Token, _cancellationTokenSource.Token);
-
             try
             {
-                return await translationItem.CompletionSource.Task
-                    .WaitAsync(linkedCts.Token);
+                // 使用更长的超时时间
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(TRANSLATION_TIMEOUT_MS));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    timeoutCts.Token, _cancellationTokenSource.Token);
+
+                var translationTask = translationItem.CompletionSource.Task;
+                var timeoutTask = Task.Delay(TRANSLATION_TIMEOUT_MS, linkedCts.Token);
+                
+                var completedTask = await Task.WhenAny(translationTask, timeoutTask);
+                if (completedTask == translationTask)
+                {
+                    return await translationTask;
+                }
+                
+                // 超时但保留原文
+                return text;
             }
             catch (OperationCanceledException)
             {
-                return string.Empty;
+                // 取消时返回原文而不是空字符串
+                return text;
             }
         }
 
@@ -74,29 +92,52 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         {
             while (!_cancellationTokenSource.Token.IsCancellationRequested)
             {
-                if (_translationQueue.TryDequeue(out var translationItem))
+                TranslationItem? translationItem = null;
+                
+                try
                 {
-                    await _translationSemaphore.WaitAsync(_cancellationTokenSource.Token);
-
-                    _ = Task.Run(async () =>
+                    if (_translationQueue.TryDequeue(out translationItem))
                     {
+                        translationItem.IsProcessing = true;
+                        await _translationSemaphore.WaitAsync(_cancellationTokenSource.Token);
+
                         try
                         {
                             var translation = await _translationController.TranslateAndLogAsync(translationItem.Text);
-                            translationItem.CompletionSource.TrySetResult(translation);
+                            if (!string.IsNullOrEmpty(translation))
+                            {
+                                translationItem.CompletionSource.TrySetResult(translation);
+                            }
+                            else
+                            {
+                                // 如果翻译为空，返回原文
+                                translationItem.CompletionSource.TrySetResult(translationItem.Text);
+                            }
                         }
                         catch (Exception ex)
                         {
-                            translationItem.CompletionSource.TrySetException(ex);
+                            Console.WriteLine($"Translation error: {ex.Message}");
+                            // 发生错误时返回原文
+                            translationItem.CompletionSource.TrySetResult(translationItem.Text);
                         }
                         finally
                         {
                             _translationSemaphore.Release();
                         }
-                    }, _cancellationTokenSource.Token);
+                    }
+                    else
+                    {
+                        await Task.Delay(50, _cancellationTokenSource.Token);
+                    }
                 }
-
-                await Task.Delay(10, _cancellationTokenSource.Token);
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Queue processing error: {ex.Message}");
+                    if (translationItem != null)
+                    {
+                        translationItem.CompletionSource.TrySetResult(translationItem.Text);
+                    }
+                }
             }
         }
 

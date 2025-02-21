@@ -197,33 +197,29 @@ namespace LiveCaptionsTranslator.models
                         {
                             string translatedResult = await _translationQueueManager.EnqueueTranslationAsync(Original);
                             
-                            if (!string.IsNullOrEmpty(translatedResult))
-                            {
-                                Translated = translatedResult;
-                                TranslateFlag = false;
+                            // 总是更新翻译结果，因为即使翻译失败也会返回原文
+                            Translated = translatedResult;
+                            TranslateFlag = false;
 
-                                if (!string.IsNullOrEmpty(Original))
-                                {
-                                    var lastHistory = captionHistory.LastOrDefault();
-                                    if (lastHistory == null || 
-                                        lastHistory.Original != Original || 
-                                        lastHistory.Translated != Translated)
-                                    {
-                                        if (captionHistory.Count >= 5)
-                                            captionHistory.Dequeue();
-                                        captionHistory.Enqueue(new CaptionHistoryItem 
-                                        { 
-                                            Original = Original, 
-                                            Translated = Translated 
-                                        });
-                                        OnPropertyChanged(nameof(CaptionHistory));
-                                    }
-                                }
+                            // 更新历史记录
+                            var lastHistory = captionHistory.LastOrDefault();
+                            if (lastHistory == null || 
+                                lastHistory.Original != Original || 
+                                lastHistory.Translated != Translated)
+                            {
+                                if (captionHistory.Count >= 5)
+                                    captionHistory.Dequeue();
+                                captionHistory.Enqueue(new CaptionHistoryItem 
+                                { 
+                                    Original = Original, 
+                                    Translated = Translated 
+                                });
+                                OnPropertyChanged(nameof(CaptionHistory));
                             }
 
                             // 对于完整句子，增加短暂延迟
                             if (EOSFlag)
-                                await Task.Delay(50, cancellationToken);
+                                await Task.Delay(100, cancellationToken);
                         }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
