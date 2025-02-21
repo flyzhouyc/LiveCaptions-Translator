@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+﻿﻿using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -18,6 +18,17 @@ namespace LiveCaptionsTranslator.models
 
         private int maxIdleInterval = 10;
         private int maxSyncInterval = 5;
+        private int minTranslationLength = 10;
+
+        public int MinTranslationLength
+        {
+            get => minTranslationLength;
+            set
+            {
+                minTranslationLength = value;
+                OnPropertyChanged("MinTranslationLength");
+            }
+        }
 
         public string ApiName
         {

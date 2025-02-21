@@ -195,7 +195,7 @@ namespace LiveCaptionsTranslator.models
                         {
                             string translatedResult = await controller.TranslateAndLogAsync(Original);
                             
-                            // 只有在有实际翻译结果时才更新
+                            // 如果有翻译结果，或者累积的文本足够长
                             if (!string.IsNullOrEmpty(translatedResult))
                             {
                                 Translated = translatedResult;
@@ -218,6 +218,12 @@ namespace LiveCaptionsTranslator.models
                                         OnPropertyChanged(nameof(CaptionHistory));
                                     }
                                 }
+                            }
+                            else
+                            {
+                                // 如果没有翻译结果，但仍然需要触发翻译，保持TranslateFlag为true
+                                await Task.Delay(100, cancellationToken);
+                                continue;
                             }
 
                             // 对于完整句子，增加延迟以模拟句子处理时间
