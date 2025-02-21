@@ -1,4 +1,5 @@
 ﻿﻿using System;
+using System.Text;
 using System.Threading.Tasks;
 using LiveCaptionsTranslator.models;
 using LiveCaptionsTranslator.models.CaptionProcessing;
