@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace LiveCaptionsTranslator.models.CaptionProcessing
 {

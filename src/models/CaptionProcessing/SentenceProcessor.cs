@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,7 +12,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         private static readonly char[] SENTENCE_ENDINGS = { '.', '!', '?' };
 
         // 常见缩写词列表
-        private static readonly HashSet<string> ABBREVIATIONS = new HashSet<string> 
+        public static readonly HashSet<string> ABBREVIATIONS = new HashSet<string> 
         { 
             "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "Ltd.", "Co.", "Inc.", 
             "St.", "Ave.", "Blvd.", "Rd.", "Ph.D.", "M.D.", "B.A.", "M.A.", "i.e.", "e.g.",
@@ -20,7 +21,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
         // 检测句子是否完整的正则表达式
         private static readonly Regex COMPLETE_SENTENCE_REGEX = new Regex(
-            @"^(?:[A-Z][^.!?]*?|""[A-Z][^.!?]*?""|'[A-Z][^.!?]*?'|\([A-Z][^.!?]*?\)|\[[A-Z][^.!?]*?\])[.!?](?:\s*["'\)\]])*$",
+            @"^(?:[A-Z][^.!?]*?|""[A-Z][^.!?]*?""|'[A-Z][^.!?]*?'|\([A-Z][^.!?]*?\)|\[[A-Z][^.!?]*?\])[.!?](?:\s*[""'\)\]])*$",
             RegexOptions.Compiled
         );
 
@@ -135,7 +136,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// <summary>
         /// 查找最后一个自然停顿点的位置
         /// </summary>
-        private static int FindLastNaturalPause(string text)
+        public static int FindLastNaturalPause(string text)
         {
             var match = NATURAL_PAUSE_REGEX.Match(text);
             var lastMatch = match;
