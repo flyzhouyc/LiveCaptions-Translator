@@ -10,9 +10,23 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         // 英语句子结束标点符号
         private static readonly char[] SENTENCE_ENDINGS = { '.', '!', '?' };
 
+        // 常见缩写词列表
+        private static readonly HashSet<string> ABBREVIATIONS = new HashSet<string> 
+        { 
+            "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "Ltd.", "Co.", "Inc.", 
+            "St.", "Ave.", "Blvd.", "Rd.", "Ph.D.", "M.D.", "B.A.", "M.A.", "i.e.", "e.g.",
+            "etc.", "vs.", "a.m.", "p.m.", "U.S.", "U.K.", "E.U."
+        };
+
         // 检测句子是否完整的正则表达式
         private static readonly Regex COMPLETE_SENTENCE_REGEX = new Regex(
-            @"^[A-Z].*?[.!?]$", 
+            @"^(?:[A-Z][^.!?]*?|""[A-Z][^.!?]*?""|'[A-Z][^.!?]*?'|\([A-Z][^.!?]*?\)|\[[A-Z][^.!?]*?\])[.!?](?:\s*["'\)\]])*$",
+            RegexOptions.Compiled
+        );
+
+        // 检测自然停顿的正则表达式
+        private static readonly Regex NATURAL_PAUSE_REGEX = new Regex(
+            @"[,;:\-—]\s|\.{3}\s|\n|\r\n",
             RegexOptions.Compiled
         );
 
@@ -29,8 +43,26 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             // 检查是否以句子结束标点结尾
             if (!SENTENCE_ENDINGS.Contains(text[^1])) return false;
 
+            // 检查是否是缩写词
+            foreach (var abbr in ABBREVIATIONS)
+            {
+                if (text.EndsWith(abbr, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
             // 使用正则表达式进一步验证
             return COMPLETE_SENTENCE_REGEX.IsMatch(text);
+        }
+
+        /// <summary>
+        /// 检查是否存在自然停顿点
+        /// </summary>
+        public static bool HasNaturalPause(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            return NATURAL_PAUSE_REGEX.IsMatch(text);
         }
 
         /// <summary>
@@ -40,13 +72,34 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         {
             if (string.IsNullOrWhiteSpace(text)) return new List<string>();
 
-            // 使用正则表达式拆分句子
-            var sentences = Regex.Split(text, @"(?<=[.!?])\s+")
-                .Select(s => s.Trim())
-                .Where(s => !string.IsNullOrEmpty(s))
-                .ToList();
+            var sentences = new List<string>();
+            var currentSentence = new StringBuilder();
+            var words = text.Split(' ');
 
-            return sentences.Where(IsCompleteSentence).ToList();
+            foreach (var word in words)
+            {
+                currentSentence.Append(word).Append(' ');
+                var current = currentSentence.ToString().Trim();
+
+                if (IsCompleteSentence(current))
+                {
+                    sentences.Add(current);
+                    currentSentence.Clear();
+                }
+                else if (HasNaturalPause(current) && currentSentence.Length > 50)
+                {
+                    // 如果遇到自然停顿且积累了足够长度的文本，也考虑拆分
+                    sentences.Add(current);
+                    currentSentence.Clear();
+                }
+            }
+
+            if (currentSentence.Length > 0)
+            {
+                sentences.Add(currentSentence.ToString().Trim());
+            }
+
+            return sentences;
         }
 
         /// <summary>
@@ -58,14 +111,40 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
             string combinedText = (currentText + " " + newFragment).Trim();
 
-            // 如果组合后的文本超过最大长度，重置
+            // 如果组合后的文本超过最大长度，检查是否可以在自然停顿点截断
             if (combinedText.Length > maxLength)
             {
+                var lastPause = FindLastNaturalPause(combinedText);
+                if (lastPause > 0)
+                {
+                    return combinedText[..lastPause].Trim();
+                }
                 combinedText = newFragment;
             }
 
-            // 如果是完整句子，返回
-            return IsCompleteSentence(combinedText) ? combinedText : null;
+            // 检查是否形成完整句子或达到自然停顿点
+            if (IsCompleteSentence(combinedText) || 
+                (HasNaturalPause(combinedText) && combinedText.Length > 50))
+            {
+                return combinedText;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 查找最后一个自然停顿点的位置
+        /// </summary>
+        private static int FindLastNaturalPause(string text)
+        {
+            var match = NATURAL_PAUSE_REGEX.Match(text);
+            var lastMatch = match;
+            while (match.Success)
+            {
+                lastMatch = match;
+                match = match.NextMatch();
+            }
+            return lastMatch.Success ? lastMatch.Index : -1;
         }
     }
 }
