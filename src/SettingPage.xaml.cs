@@ -1,4 +1,4 @@
-﻿﻿using LiveCaptionsTranslator.models;
+﻿﻿﻿﻿using LiveCaptionsTranslator.models;
 using System.Windows;
 using System.Windows.Controls;
 using Wpf.Ui.Appearance;
@@ -42,11 +42,8 @@ namespace LiveCaptionsTranslator
         {
             LoadAPISetting();
             
-            // Initialize the appropriate caption provider
-            if (App.Captions != null)
-            {
-                App.Captions.InitializeProvider(App.Settings.ApiName);
-            }
+            // Restart caption tasks with new provider
+            ((App)Application.Current).RestartCaptionTasks();
         }
     }
 }

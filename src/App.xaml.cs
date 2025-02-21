@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -12,8 +12,10 @@ namespace LiveCaptionsTranslator
         private static AutomationElement? window = null;
         private static Caption? captions = null;
         private static Setting? settings = null;
-        private readonly CancellationTokenSource _appCts;
+        private CancellationTokenSource? _syncCts;
+        private CancellationTokenSource? _translateCts;
         private bool _disposed;
+        private readonly object _taskLock = new object();
 
         public static AutomationElement? Window
         {
@@ -31,7 +33,6 @@ namespace LiveCaptionsTranslator
 
         App()
         {
-            _appCts = new CancellationTokenSource();
             AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 
             window = LiveCaptionsHandler.LaunchLiveCaptions();
@@ -39,11 +40,61 @@ namespace LiveCaptionsTranslator
             settings = Setting.Load();
 
             // Initialize caption provider based on current API setting
-            captions?.InitializeProvider(settings?.ApiName ?? "OpenAI");
+            InitializeCaptionTasks();
+        }
 
-            // Start caption sync and translation tasks
-            Task.Run(async () => await RunCaptionSyncAsync(_appCts.Token));
-            Task.Run(async () => await RunTranslationAsync(_appCts.Token));
+        private void InitializeCaptionTasks()
+        {
+            lock (_taskLock)
+            {
+                try
+                {
+                    // Cancel existing tasks if any
+                    CancelCaptionTasks();
+
+                    // Initialize provider
+                    captions?.InitializeProvider(settings?.ApiName ?? "OpenAI");
+
+                    // Create new cancellation tokens
+                    _syncCts = new CancellationTokenSource();
+                    _translateCts = new CancellationTokenSource();
+
+                    // Start new tasks
+                    Task.Run(async () => await RunCaptionSyncAsync(_syncCts.Token));
+                    Task.Run(async () => await RunTranslationAsync(_translateCts.Token));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error initializing caption tasks: {ex.Message}");
+                }
+            }
+        }
+
+        public void RestartCaptionTasks()
+        {
+            InitializeCaptionTasks();
+        }
+
+        private void CancelCaptionTasks()
+        {
+            lock (_taskLock)
+            {
+                try
+                {
+                    _syncCts?.Cancel();
+                    _translateCts?.Cancel();
+
+                    _syncCts?.Dispose();
+                    _translateCts?.Dispose();
+
+                    _syncCts = null;
+                    _translateCts = null;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error canceling caption tasks: {ex.Message}");
+                }
+            }
         }
 
         private async Task RunCaptionSyncAsync(CancellationToken cancellationToken)
@@ -94,8 +145,7 @@ namespace LiveCaptionsTranslator
             if (!_disposed)
             {
                 _disposed = true;
-                _appCts.Cancel();
-                _appCts.Dispose();
+                CancelCaptionTasks();
                 
                 if (Captions != null)
                 {

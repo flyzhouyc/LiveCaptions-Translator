@@ -10,7 +10,6 @@ using LiveCaptionsTranslator.controllers;
 using LiveCaptionsTranslator.models.CaptionProviders;
 using LiveCaptionsTranslator.models.CaptionProcessing;
 
-
 namespace LiveCaptionsTranslator.models
 {
     public class Caption : INotifyPropertyChanged, IDisposable
@@ -84,127 +83,161 @@ namespace LiveCaptionsTranslator.models
 
         public void InitializeProvider(string providerName)
         {
-            _captionProvider = CaptionProviderFactory.GetProvider(providerName);
-            _syncCts?.Cancel();
-            _syncCts = new CancellationTokenSource();
+            try
+            {
+                _captionProvider = CaptionProviderFactory.GetProvider(providerName);
+                Console.WriteLine($"Initialized caption provider: {providerName}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error initializing provider {providerName}: {ex.Message}");
+                throw;
+            }
         }
 
-        public async Task SyncAsync()
+        public async Task SyncAsync(CancellationToken externalToken = default)
         {
             if (_captionProvider == null)
             {
                 throw new InvalidOperationException("Caption provider not initialized");
             }
 
-            var token = _syncCts?.Token ?? CancellationToken.None;
+            // Combine external token with internal token if available
+            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+            var token = combinedCts.Token;
             int syncCount = 0;
 
-            while (!token.IsCancellationRequested)
-            {
-                if (PauseFlag || App.Window == null)
-                {
-                    await Task.Delay(50, token);
-                    continue;
-                }
+            Console.WriteLine($"Starting sync with provider: {_captionProvider.ProviderName}");
 
-                try
+            try
+            {
+                while (!token.IsCancellationRequested)
                 {
-                    string fullText = (await _captionProvider.GetCaptionsAsync(App.Window, token)).Trim();
-                    if (string.IsNullOrEmpty(fullText))
+                    if (PauseFlag || App.Window == null)
                     {
                         await Task.Delay(50, token);
                         continue;
                     }
 
-                    fullText = CaptionTextProcessor.ProcessFullText(fullText);
-                    int lastEOSIndex = CaptionTextProcessor.GetLastEOSIndex(fullText);
-                    string latestCaption = CaptionTextProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
-
-                    if (Original.CompareTo(latestCaption) != 0)
+                    try
                     {
-                        syncCount++;
-                        Original = latestCaption;
-                        TranslateFlag = CaptionTextProcessor.ShouldTriggerTranslation(latestCaption, ref syncCount, App.Settings.MaxSyncInterval);
-                        EOSFlag = Array.IndexOf(CaptionTextProcessor.PUNC_EOS, latestCaption[^1]) != -1;
-                    }
+                        string fullText = (await _captionProvider.GetCaptionsAsync(App.Window, token)).Trim();
+                        if (string.IsNullOrEmpty(fullText))
+                        {
+                            await Task.Delay(50, token);
+                            continue;
+                        }
 
-                    await Task.Delay(_captionProvider.SupportsAdaptiveSync ? 30 : 50, token);
-                }
-                catch (OperationCanceledException) when (token.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Sync error: {ex.Message}");
-                    await Task.Delay(50, token);
+                        fullText = CaptionTextProcessor.ProcessFullText(fullText);
+                        int lastEOSIndex = CaptionTextProcessor.GetLastEOSIndex(fullText);
+                        string latestCaption = CaptionTextProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
+
+                        if (Original.CompareTo(latestCaption) != 0)
+                        {
+                            syncCount++;
+                            Original = latestCaption;
+                            TranslateFlag = CaptionTextProcessor.ShouldTriggerTranslation(latestCaption, ref syncCount, App.Settings.MaxSyncInterval);
+                            EOSFlag = Array.IndexOf(CaptionTextProcessor.PUNC_EOS, latestCaption[^1]) != -1;
+                        }
+
+                        await Task.Delay(_captionProvider.SupportsAdaptiveSync ? 30 : 50, token);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Sync error: {ex.Message}");
+                        await Task.Delay(50, token);
+                    }
                 }
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                Console.WriteLine("Caption sync cancelled");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Critical sync error: {ex.Message}");
+                throw;
+            }
         }
-
 
         public async Task TranslateAsync(CancellationToken cancellationToken = default)
         {
             var controller = new TranslationController();
+            Console.WriteLine("Starting translation task");
 
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                if (PauseFlag)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    int pauseCount = 0;
-                    while (PauseFlag && !cancellationToken.IsCancellationRequested)
+                    if (PauseFlag)
                     {
-                        if (pauseCount > 60 && App.Window != null)
+                        int pauseCount = 0;
+                        while (PauseFlag && !cancellationToken.IsCancellationRequested)
                         {
-                            App.Window = null;
-                            LiveCaptionsHandler.KillLiveCaptions();
-                        }
-                        await Task.Delay(1000, cancellationToken);
-                        pauseCount++;
-                    }
-                    continue;
-                }
-
-                try
-                {
-                    if (TranslateFlag)
-                    {
-                        Translated = await controller.TranslateAndLogAsync(Original);
-                        TranslateFlag = false;
-
-                        // Add to history
-                        if (!string.IsNullOrEmpty(Original) && !string.IsNullOrEmpty(Translated))
-                        {
-                            var lastHistory = captionHistory.LastOrDefault();
-                            if (lastHistory == null || 
-                                lastHistory.Original != Original || 
-                                lastHistory.Translated != Translated)
+                            if (pauseCount > 60 && App.Window != null)
                             {
-                                if (captionHistory.Count >= 5)
-                                    captionHistory.Dequeue();
-                                captionHistory.Enqueue(new CaptionHistoryItem 
-                                { 
-                                    Original = Original, 
-                                    Translated = Translated 
-                                });
-                                OnPropertyChanged(nameof(CaptionHistory));
+                                App.Window = null;
+                                LiveCaptionsHandler.KillLiveCaptions();
                             }
-                        }
-
-                        if (EOSFlag)
                             await Task.Delay(1000, cancellationToken);
+                            pauseCount++;
+                        }
+                        continue;
                     }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Translate error: {ex.Message}");
-                }
 
-                await Task.Delay(50, cancellationToken);
+                    try
+                    {
+                        if (TranslateFlag)
+                        {
+                            Translated = await controller.TranslateAndLogAsync(Original);
+                            TranslateFlag = false;
+
+                            if (!string.IsNullOrEmpty(Original) && !string.IsNullOrEmpty(Translated))
+                            {
+                                var lastHistory = captionHistory.LastOrDefault();
+                                if (lastHistory == null || 
+                                    lastHistory.Original != Original || 
+                                    lastHistory.Translated != Translated)
+                                {
+                                    if (captionHistory.Count >= 5)
+                                        captionHistory.Dequeue();
+                                    captionHistory.Enqueue(new CaptionHistoryItem 
+                                    { 
+                                        Original = Original, 
+                                        Translated = Translated 
+                                    });
+                                    OnPropertyChanged(nameof(CaptionHistory));
+                                }
+                            }
+
+                            if (EOSFlag)
+                                await Task.Delay(1000, cancellationToken);
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Translation error: {ex.Message}");
+                    }
+
+                    await Task.Delay(50, cancellationToken);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine("Translation task cancelled");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Critical translation error: {ex.Message}");
+                throw;
             }
         }
 
