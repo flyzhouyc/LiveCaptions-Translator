@@ -40,16 +40,16 @@ namespace LiveCaptionsTranslator.models
                 int delay;
                 if (string.IsNullOrEmpty(text))
                 {
-                    delay = Math.Min(3 + _emptyCount++, 8);
+                    delay = Math.Min(20 + _emptyCount++ * 5, 100); // 更大的基础延迟
                 }
                 else if (text == prevText)
                 {
-                    delay = Math.Min(2 + _sameTextCount++, 5);
+                    delay = Math.Min(15 + _sameTextCount++ * 3, 50);
                 }
                 else
                 {
                     _emptyCount = _sameTextCount = 0;
-                    delay = 1;
+                    delay = 10; // 增加最小延迟
                 }
 
                 _delayStats.Enqueue(delay);
@@ -66,16 +66,32 @@ namespace LiveCaptionsTranslator.models
 
             try
             {
+                // 首先尝试使用AutomationElement
                 if (_cachedElement == null || DateTime.Now - _lastElementAccess > _elementCacheTimeout)
                 {
                     _cachedElement = LiveCaptionsHandler.FindElementByAId(window, "CaptionTextBlock");
                     _lastElementAccess = DateTime.Now;
                 }
 
+                string text = _cachedElement?.Current.Name ?? string.Empty;
+                
+                // 如果获取到文本，立即返回
+                if (!string.IsNullOrEmpty(text))
+                {
+                    return text;
+                }
+
+                // 如果获取失败，重置缓存
+                _cachedElement = null;
+                
+                // 等待短暂时间后重试
+                await Task.Delay(50);
+                _cachedElement = LiveCaptionsHandler.FindElementByAId(window, "CaptionTextBlock");
                 return _cachedElement?.Current.Name ?? string.Empty;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine($"Caption retrieval error: {ex.Message}");
                 _cachedElement = null;
                 return string.Empty;
             }
@@ -83,6 +99,9 @@ namespace LiveCaptionsTranslator.models
 
         public async Task<bool> ShouldTranslateAsync(string text)
         {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
             // 完整句子立即翻译
             if (_sentenceProcessor.IsCompleteSentence(text))
                 return true;
@@ -94,8 +113,8 @@ namespace LiveCaptionsTranslator.models
             // 更新模式
             UpdatePatterns(text);
 
-            // 动态阈值检查
-            return text.Length >= GetDynamicThreshold(completenessScore);
+            // 更宽松的阈值检查
+            return text.Length >= GetDynamicThreshold(completenessScore) * 0.8;
         }
 
         private float CalculateCompleteness(string text)
