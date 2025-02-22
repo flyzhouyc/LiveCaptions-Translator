@@ -294,12 +294,12 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
                         int pauseCount = 0;
                         while (PauseFlag && !cancellationToken.IsCancellationRequested)
                         {
-                            if (pauseCount > 30 && App.Window != null) // 减少等待时间
+                            if (pauseCount > 30 && App.Window != null)
                             {
                                 App.Window = null;
                                 LiveCaptionsHandler.KillLiveCaptions();
                             }
-                            await Task.Delay(500, cancellationToken); // 减少暂停检查间隔
+                            await Task.Delay(500, cancellationToken);
                             pauseCount++;
                         }
                         continue;
@@ -307,20 +307,13 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
 
                     try
                     {
-                        if (TranslateFlag)
+                        if (TranslateFlag && Original != lastTranslatedText)
                         {
-                            // 避免重复翻译相同的文本
-                            if (Original == lastTranslatedText)
-                            {
-                                await Task.Delay(10, cancellationToken);
-                                continue;
-                            }
-
                             // 注册为观察者并开始流式翻译
                             await StreamingTranslation.Instance.RegisterObserverAsync(Original, this);
                             try
                             {
-                                await StreamingTranslation.Instance.StreamTranslateAsync(Original, cancellationToken);
+                                await controller.TranslateAndLogAsync(Original);
                                 lastTranslatedText = Original;
                             }
                             finally
@@ -329,8 +322,7 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
                             }
                         }
 
-                        // 最小化空闲延迟
-                        await Task.Delay(10, cancellationToken);
+                        await Task.Delay(50, cancellationToken); // 增加延迟以减少CPU使用
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
@@ -339,7 +331,7 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
                     catch (Exception ex)
                     {
                         Console.WriteLine($"Translation error: {ex.Message}");
-                        await Task.Delay(20, cancellationToken); // 减少错误恢复延迟
+                        await Task.Delay(100, cancellationToken); // 错误后增加延迟
                     }
                 }
             }

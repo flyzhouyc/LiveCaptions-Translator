@@ -112,14 +112,15 @@ namespace LiveCaptionsTranslator.models
                             partialResult.Append(translation);
                             await NotifyObserversPartialAsync(text, partialResult.ToString().Trim());
                             wordCount = 0; // 重置词计数
+                            currentPhrase.Clear(); // 清空当前短语缓存
                         }
                     }
                 }
 
                 // 最终完整翻译
-                if (text.Length >= minTranslationLength)
+                string finalTranslation = await TranslateAPI.TranslateFunc(text);
+                if (!string.IsNullOrEmpty(finalTranslation))
                 {
-                    string finalTranslation = await TranslateAPI.TranslateFunc(text);
                     await NotifyObserversCompleteAsync(text, finalTranslation);
                 }
             }

@@ -80,32 +80,29 @@ namespace LiveCaptionsTranslator.controllers
                 return string.Empty;
             }
 
-            string translatedText;
             try
             {
-                // 使用翻译队列进行批量处理
-                translatedText = await TranslationQueue.Instance.EnqueueAsync(completeSentence).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Error] Translation failed: {ex.Message}");
-                return $"[Translation Failed] {ex.Message}";
-            }
-            
-            if (!string.IsNullOrEmpty(translatedText))
-            {
+                // 使用流式翻译
+                await StreamingTranslation.Instance.StreamTranslateAsync(completeSentence, CancellationToken.None);
+                
+                // 记录翻译历史
                 try
                 {
-                    await SQLiteHistoryLogger.LogTranslationAsync(completeSentence, translatedText, targetLanguage, apiName).ConfigureAwait(false);
+                    await SQLiteHistoryLogger.LogTranslationAsync(completeSentence, completeSentence, targetLanguage, apiName).ConfigureAwait(false);
                     TranslationLogged?.Invoke();
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Error] Logging history failed: {ex.Message}");
                 }
-            }
 
-            return translatedText;
+                return completeSentence; // 返回原文，实际翻译结果会通过观察者模式更新
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] Translation failed: {ex.Message}");
+                return $"[Translation Failed] {ex.Message}";
+            }
         }
     }
 }
