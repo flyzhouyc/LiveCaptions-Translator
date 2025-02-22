@@ -104,7 +104,24 @@ namespace LiveCaptionsTranslator.models
 
             // 完整句子立即翻译
             if (_sentenceProcessor.IsCompleteSentence(text))
+            {
+                _lastConfidence = 1.0f;
                 return true;
+            }
+
+            // 自然停顿检查
+            if (_sentenceProcessor.HasNaturalPause(text))
+            {
+                _lastConfidence = 0.8f;
+                return true;
+            }
+
+            // 长度检查
+            if (text.Length >= 30) // 降低长度阈值
+            {
+                _lastConfidence = 0.6f;
+                return true;
+            }
 
             // 预测评分
             float completenessScore = CalculateCompleteness(text);
@@ -114,7 +131,7 @@ namespace LiveCaptionsTranslator.models
             UpdatePatterns(text);
 
             // 更宽松的阈值检查
-            return text.Length >= GetDynamicThreshold(completenessScore) * 0.8;
+            return completenessScore >= 0.4f; // 降低完整度阈值
         }
 
         private float CalculateCompleteness(string text)
@@ -123,17 +140,20 @@ namespace LiveCaptionsTranslator.models
 
             float score = 0;
             
-            // 1. 句子完整性检查
+            // 基础分数
+            score += 0.3f;
+            
+            // 句子完整性检查
             if (_sentenceProcessor.IsCompleteSentence(text))
-                score += 0.5f;
+                score += 0.4f;
                 
-            // 2. 自然停顿检查
+            // 自然停顿检查
             if (_sentenceProcessor.HasNaturalPause(text))
-                score += 0.3f;
+                score += 0.2f;
                 
-            // 3. 模式匹配
+            // 模式匹配
             if (_patterns.TryGetValue(text, out float patternScore))
-                score += patternScore * 0.2f;
+                score += patternScore * 0.1f;
 
             return Math.Min(score, 1.0f);
         }
@@ -148,18 +168,18 @@ namespace LiveCaptionsTranslator.models
 
             // 更新模式得分
             if (_patterns.ContainsKey(text))
-                _patterns[text] = Math.Min(_patterns[text] + 0.1f, 1.0f);
+                _patterns[text] = Math.Min(_patterns[text] + 0.2f, 1.0f); // 加快学习速度
             else
-                _patterns[text] = 0.1f;
+                _patterns[text] = 0.2f; // 提高初始分数
         }
 
         private int GetDynamicThreshold(float confidence)
         {
             return confidence switch
             {
-                > 0.7f => 50,  // 高置信度
-                > 0.5f => 70,  // 中等置信度
-                _ => 90        // 低置信度
+                > 0.7f => 30,  // 降低高置信度阈值
+                > 0.5f => 40,  // 降低中等置信度阈值
+                _ => 50        // 降低低置信度阈值
             };
         }
 

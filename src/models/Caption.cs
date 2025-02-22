@@ -228,10 +228,24 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                             
                             // 使用优化器的置信度来决定翻译优先级
                             metrics = _optimizer.GetPerformanceMetrics();
-                            int delay = metrics.LastConfidence > 0.8f ? 10 : 
-                                      metrics.LastConfidence > 0.5f ? 20 : 30;
+                            
+                            // 减少翻译延迟
+                            int delay = metrics.LastConfidence > 0.8f ? 5 : 
+                                      metrics.LastConfidence > 0.5f ? 10 : 15;
 
-                            string translatedResult = await controller.TranslateAndLogAsync(Original);
+                            // 尝试翻译，最多重试3次
+                            string translatedResult = null;
+                            int retryCount = 0;
+                            while (retryCount < 3 && string.IsNullOrEmpty(translatedResult))
+                            {
+                                translatedResult = await controller.TranslateAndLogAsync(Original);
+                                if (string.IsNullOrEmpty(translatedResult))
+                                {
+                                    retryCount++;
+                                    await Task.Delay(50 * retryCount, cancellationToken);
+                                }
+                            }
+
                             if (!string.IsNullOrEmpty(translatedResult))
                             {
                                 Translated = translatedResult;
@@ -260,13 +274,18 @@ public async Task SyncAsync(CancellationToken externalToken = default)
 
                                 Console.WriteLine($"Translation success: {translatedResult}");
                             }
+                            else
+                            {
+                                Console.WriteLine("Translation failed after retries");
+                                consecutiveErrors++;
+                            }
 
                             await Task.Delay(delay, cancellationToken);
                         }
                         else
                         {
-                            // 动态调整检查间隔
-                            await Task.Delay(metrics.LastConfidence > 0.5f ? 30 : 50, cancellationToken);
+                            // 减少检查间隔
+                            await Task.Delay(metrics.LastConfidence > 0.5f ? 15 : 25, cancellationToken);
                         }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
