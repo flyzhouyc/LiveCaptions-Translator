@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using System;
+﻿﻿using System;
 using System.Text;
 using System.Threading.Tasks;
 using LiveCaptionsTranslator.models;
@@ -21,22 +21,13 @@ namespace LiveCaptionsTranslator.controllers
             _sentenceProcessor = new SentenceProcessor();
         }
 
-        private async Task InitializeAsync()
+        private Task InitializeAsync()
         {
-            if (_isInitialized) return;
-
-            try
+            if (!_isInitialized)
             {
-                // 预热翻译API
-                await TranslationWarmup.Instance.WarmupAsync();
                 _isInitialized = true;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Warning] Translation warmup failed: {ex.Message}");
-                // 即使预热失败也继续运行
-                _isInitialized = true;
-            }
+            return Task.CompletedTask;
         }
 
         public async Task<string> TranslateAndLogAsync(string text)
