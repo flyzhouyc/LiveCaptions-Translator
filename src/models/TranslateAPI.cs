@@ -6,121 +6,10 @@ using System.Collections.Concurrent;
 
 namespace LiveCaptionsTranslator.models
 {
-    public class TranslationCache
-    {
-        private readonly ConcurrentDictionary<string, CacheEntry> _cache = new();
-        private const int MaxCacheSize = 500; // 进一步增加缓存容量
-        private const int CleanupThreshold = 400; // 清理阈值
-        private readonly SemaphoreSlim _cleanupLock = new(1); // 清理锁
-        private DateTime _lastCleanup = DateTime.Now;
-
-        private TimeSpan GetDynamicExpirationTime(string text)
-        {
-            // 根据文本长度和使用频率动态调整过期时间
-            return text.Length switch
-            {
-                < 30 => TimeSpan.FromHours(2),    // 短文本保留更长时间
-                < 100 => TimeSpan.FromHours(1),
-                < 300 => TimeSpan.FromMinutes(30),
-                _ => TimeSpan.FromMinutes(15)      // 长文本更快过期
-            };
-        }
-
-        private async Task CleanupCacheIfNeeded()
-        {
-            if (_cache.Count < CleanupThreshold || 
-                DateTime.Now - _lastCleanup < TimeSpan.FromMinutes(5))
-                return;
-
-            if (await _cleanupLock.WaitAsync(0)) // 非阻塞尝试获取锁
-            {
-                try
-                {
-                    // 首先移除过期项
-                    var expiredKeys = _cache.Where(kvp => kvp.Value.IsExpired)
-                        .Select(kvp => kvp.Key).ToList();
-                    foreach (var key in expiredKeys)
-                    {
-                        _cache.TryRemove(key, out _);
-                    }
-
-                    // 如果仍然超过阈值，根据访问时间和频率移除
-                    if (_cache.Count > CleanupThreshold)
-                    {
-                        var leastUsed = _cache
-                            .OrderBy(kvp => kvp.Value.LastAccessTime)
-                            .ThenBy(kvp => kvp.Value.AccessCount)
-                            .Take(_cache.Count - CleanupThreshold)
-                            .Select(kvp => kvp.Key)
-                            .ToList();
-
-                        foreach (var key in leastUsed)
-                        {
-                            _cache.TryRemove(key, out _);
-                        }
-                    }
-
-                    _lastCleanup = DateTime.Now;
-                }
-                finally
-                {
-                    _cleanupLock.Release();
-                }
-            }
-        }
-
-        public async Task<string> GetOrTranslateAsync(string text, Func<string, Task<string>> translateFunc)
-        {
-            // 尝试从缓存获取
-            if (_cache.TryGetValue(text, out var entry))
-            {
-                if (!entry.IsExpired)
-                {
-                    entry.IncrementAccess();
-                    return entry.TranslatedText;
-                }
-                _cache.TryRemove(text, out _);
-            }
-
-            // 异步清理缓存
-            _ = CleanupCacheIfNeeded();
-
-            // 执行翻译
-            var translatedText = await translateFunc(text);
-            _cache[text] = new CacheEntry(translatedText, GetDynamicExpirationTime(text));
-            return translatedText;
-        }
-    }
-
-    public class CacheEntry
-    {
-        public string TranslatedText { get; }
-        public DateTime CreatedAt { get; }
-        public DateTime LastAccessTime { get; private set; }
-        public int AccessCount { get; private set; }
-        public TimeSpan ExpirationTime { get; }
-        public bool IsExpired => DateTime.Now - CreatedAt > ExpirationTime;
-
-        public CacheEntry(string translatedText, TimeSpan expirationTime)
-        {
-            TranslatedText = translatedText;
-            CreatedAt = DateTime.Now;
-            LastAccessTime = DateTime.Now;
-            AccessCount = 1;
-            ExpirationTime = expirationTime;
-        }
-
-        public void IncrementAccess()
-        {
-            LastAccessTime = DateTime.Now;
-            AccessCount++;
-        }
-    }
-
     public static class TranslateAPI
     {
-        private static readonly TranslationCache _cache = new();
-        private static readonly SemaphoreSlim _semaphore = new(Environment.ProcessorCount * 4); // 增加并发数
+        private static readonly PersistentCache _cache = new();
+        private static readonly BatchTranslationProcessor _batchProcessor;
         private static readonly HttpClient client = new HttpClient() 
         { 
             Timeout = TimeSpan.FromSeconds(5),  // 减少超时时间
@@ -145,39 +34,53 @@ namespace LiveCaptionsTranslator.models
             get => async (text) => await TranslateWithCacheAsync(text);
         }
 
+        static TranslateAPI()
+        {
+            _batchProcessor = new BatchTranslationProcessor(
+                async (text) =>
+                {
+                    const int maxAttempts = 3;
+                    Exception lastException = null;
+
+                    for (int attempt = 0; attempt < maxAttempts; attempt++)
+                    {
+                        try
+                        {
+                            return await _cache.GetOrTranslateAsync(text, GetSelectedTranslateMethod());
+                        }
+                        catch (Exception ex)
+                        {
+                            lastException = ex;
+                            SwitchToNextAPI();
+                            
+                            if (attempt < maxAttempts - 1)
+                            {
+                                await Task.Delay(500 * (attempt + 1)); // 指数退避
+                                continue;
+                            }
+                        }
+                    }
+
+                    return $"[Translation Failed] {lastException?.Message}";
+                },
+                maxBatchSize: 5,
+                maxWaitMilliseconds: 500,
+                maxConcurrentBatches: Environment.ProcessorCount * 2
+            );
+        }
+
         public static async Task<string> TranslateWithCacheAsync(string text)
         {
-            const int maxAttempts = 3;
-            Exception lastException = null;
+            return await _batchProcessor.EnqueueTranslationAsync(text);
+        }
 
-            for (int attempt = 0; attempt < maxAttempts; attempt++)
+        public static async Task DisposeAsync()
+        {
+            await _batchProcessor.DisposeAsync();
+            if (_cache is IAsyncDisposable disposableCache)
             {
-                try
-                {
-                    await _semaphore.WaitAsync();
-                    try 
-                    {
-                        return await _cache.GetOrTranslateAsync(text, GetSelectedTranslateMethod());
-                    }
-                    finally 
-                    {
-                        _semaphore.Release();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    lastException = ex;
-                    SwitchToNextAPI();
-                    
-                    if (attempt < maxAttempts - 1)
-                    {
-                        await Task.Delay(500 * (attempt + 1)); // 指数退避
-                        continue;
-                    }
-                }
+                await disposableCache.DisposeAsync();
             }
-
-            return $"[Translation Failed] {lastException?.Message}";
         }
 
         private static void SwitchToNextAPI()

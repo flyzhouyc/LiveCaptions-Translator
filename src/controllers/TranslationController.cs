@@ -6,7 +6,7 @@ using LiveCaptionsTranslator.models.CaptionProcessing;
 
 namespace LiveCaptionsTranslator.controllers
 {
-    public class TranslationController
+    public class TranslationController : IAsyncDisposable
     {
         private string? _accumulatedSentence;
         private const int MAX_SENTENCE_LENGTH = 300;
@@ -28,6 +28,11 @@ namespace LiveCaptionsTranslator.controllers
                 _isInitialized = true;
             }
             return Task.CompletedTask;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await TranslateAPI.DisposeAsync();
         }
 
         public async Task<string> TranslateAndLogAsync(string text)
