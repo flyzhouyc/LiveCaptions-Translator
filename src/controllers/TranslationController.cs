@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.Text;
 using System.Threading.Tasks;
 using LiveCaptionsTranslator.models;
@@ -82,21 +82,24 @@ namespace LiveCaptionsTranslator.controllers
 
             try
             {
-                // 使用流式翻译
-                await StreamingTranslation.Instance.StreamTranslateAsync(completeSentence, CancellationToken.None);
+                // 直接使用翻译API
+                string translatedText = await TranslateAPI.TranslateFunc(completeSentence);
                 
-                // 记录翻译历史
-                try
+                if (!string.IsNullOrEmpty(translatedText))
                 {
-                    await SQLiteHistoryLogger.LogTranslationAsync(completeSentence, completeSentence, targetLanguage, apiName).ConfigureAwait(false);
-                    TranslationLogged?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Error] Logging history failed: {ex.Message}");
+                    // 记录翻译历史
+                    try
+                    {
+                        await SQLiteHistoryLogger.LogTranslationAsync(completeSentence, translatedText, targetLanguage, apiName).ConfigureAwait(false);
+                        TranslationLogged?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Error] Logging history failed: {ex.Message}");
+                    }
                 }
 
-                return completeSentence; // 返回原文，实际翻译结果会通过观察者模式更新
+                return translatedText;
             }
             catch (Exception ex)
             {

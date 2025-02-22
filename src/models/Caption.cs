@@ -12,7 +12,7 @@ using LiveCaptionsTranslator.models.CaptionProcessing;
 
 namespace LiveCaptionsTranslator.models
 {
-    public class Caption : INotifyPropertyChanged, IDisposable, StreamingTranslation.IStreamingTranslationObserver
+    public class Caption : INotifyPropertyChanged, IDisposable
     {
         // 单例模式
         private static Caption? instance = null;
@@ -235,49 +235,6 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
     }
 }
 
-        public void OnPartialTranslation(string text, string partialTranslation)
-        {
-            if (text == Original)
-            {
-                Translated = partialTranslation;
-            }
-        }
-
-        public void OnTranslationComplete(string text, string finalTranslation)
-        {
-            if (text == Original)
-            {
-                Translated = finalTranslation;
-                TranslateFlag = false;
-
-                if (!string.IsNullOrEmpty(Original))
-                {
-                    var lastHistory = captionHistory.LastOrDefault();
-                    if (lastHistory == null || 
-                        lastHistory.Original != Original || 
-                        lastHistory.Translated != Translated)
-                    {
-                        if (captionHistory.Count >= 5)
-                            captionHistory.Dequeue();
-                        captionHistory.Enqueue(new CaptionHistoryItem 
-                        { 
-                            Original = Original, 
-                            Translated = Translated 
-                        });
-                        OnPropertyChanged(nameof(CaptionHistory));
-                    }
-                }
-            }
-        }
-
-        public void OnTranslationError(string text, string error)
-        {
-            if (text == Original)
-            {
-                Translated = $"[Translation Failed] {error}";
-                TranslateFlag = false;
-            }
-        }
 
         public async Task TranslateAsync(CancellationToken cancellationToken = default)
         {
@@ -309,16 +266,31 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
                     {
                         if (TranslateFlag && Original != lastTranslatedText)
                         {
-                            // 注册为观察者并开始流式翻译
-                            await StreamingTranslation.Instance.RegisterObserverAsync(Original, this);
-                            try
+                            string translatedResult = await controller.TranslateAndLogAsync(Original);
+                            if (!string.IsNullOrEmpty(translatedResult))
                             {
-                                await controller.TranslateAndLogAsync(Original);
+                                Translated = translatedResult;
                                 lastTranslatedText = Original;
-                            }
-                            finally
-                            {
-                                await StreamingTranslation.Instance.UnregisterObserverAsync(Original, this);
+                                TranslateFlag = false;
+
+                                // 更新历史记录
+                                if (!string.IsNullOrEmpty(Original))
+                                {
+                                    var lastHistory = captionHistory.LastOrDefault();
+                                    if (lastHistory == null || 
+                                        lastHistory.Original != Original || 
+                                        lastHistory.Translated != Translated)
+                                    {
+                                        if (captionHistory.Count >= 5)
+                                            captionHistory.Dequeue();
+                                        captionHistory.Enqueue(new CaptionHistoryItem 
+                                        { 
+                                            Original = Original, 
+                                            Translated = Translated 
+                                        });
+                                        OnPropertyChanged(nameof(CaptionHistory));
+                                    }
+                                }
                             }
                         }
 
