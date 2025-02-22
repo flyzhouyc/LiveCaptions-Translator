@@ -8,7 +8,12 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="SettingPage"
+    xmlns:converters="clr-namespace:LiveCaptionsTranslator.converters"
     mc:Ignorable="d">
+    
+    <Page.Resources>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+    </Page.Resources>
 
     <Grid x:Name="PageGrid">
         <Grid.ColumnDefinitions>
@@ -43,14 +48,60 @@
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Min Translation Length" />
                 <StackPanel Orientation="Horizontal">
-<Slider
-    Width="140"
-    Margin="0,0,5,0"
-    AutoToolTipPlacement="TopLeft"
-    AutoToolTipPrecision="0"
-    Minimum="0"
-    Maximum="200"
-    Value="{Binding MinTranslationLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Slider
+                        Width="140"
+                        Margin="0,0,5,0"
+                        AutoToolTipPlacement="TopLeft"
+                        AutoToolTipPrecision="0"
+                        Minimum="0"
+                        Maximum="200"
+                        Value="{Binding MinTranslationLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Min Caption Bytes" />
+                <StackPanel Orientation="Horizontal">
+                    <Slider
+                        Width="140"
+                        Margin="0,0,5,0"
+                        AutoToolTipPlacement="TopLeft"
+                        AutoToolTipPrecision="0"
+                        Minimum="0"
+                        Maximum="20"
+                        Value="{Binding MinCaptionBytes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Optimal Caption Length" />
+                <StackPanel Orientation="Vertical">
+                    <CheckBox
+                        Content="Auto Adjust"
+                        IsChecked="{Binding UseAutomaticOptimalLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Margin="2.5,0,0,5"/>
+                    <Slider
+                        Width="140"
+                        Margin="0,0,5,0"
+                        AutoToolTipPlacement="TopLeft"
+                        AutoToolTipPrecision="0"
+                        Minimum="50"
+                        Maximum="200"
+                        IsEnabled="{Binding UseAutomaticOptimalLength, Converter={StaticResource InverseBooleanConverter}}"
+                        Value="{Binding OptimalCaptionLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock 
+                        Text="Adjustment Factor"
+                        Margin="2.5,10,0,5"
+                        IsEnabled="{Binding UseAutomaticOptimalLength}"/>
+                    <ui:NumberBox
+                        Width="140"
+                        Height="30"
+                        Padding="10,4,10,7"
+                        FontSize="13.3"
+                        LargeChange="0.1"
+                        Maximum="2.0"
+                        Minimum="0.5"
+                        SmallChange="0.05"
+                        IsEnabled="{Binding UseAutomaticOptimalLength}"
+                        Value="{Binding OptimalLengthAdjustmentFactor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
             </StackPanel>
         </StackPanel>

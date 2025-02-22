@@ -9,9 +9,41 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         public static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
         public static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
         
-        private const int MIN_CAPTION_BYTES = 15;
+        // Moved to App.Settings.MinCaptionBytes
         private const int MAX_CAPTION_BYTES = 170;
-        private const int OPTIMAL_CAPTION_LENGTH = 100;
+        private int GetOptimalCaptionLength(string text)
+        {
+            if (!App.Settings.UseAutomaticOptimalLength)
+            {
+                return App.Settings.OptimalCaptionLength;
+            }
+
+            // 基础长度基于目标语言
+            int baseLength = App.Settings.TargetLanguage switch
+            {
+                "zh-CN" or "zh-TW" or "ja" or "ko" => 75,  // 东亚语言字符较少
+                "en" => 120,                                // 英语需要更多字符
+                _ => 100                                    // 其他语言默认值
+            };
+
+            // 根据语速调整
+            if (_sentenceProcessor is MLSentenceProcessor mlProcessor)
+            {
+                var speechRate = mlProcessor.GetCurrentSpeechRate();
+                if (speechRate > 0)
+                {
+                    // 语速快时减少长度，语速慢时增加长度
+                    double speedFactor = 3.0 / speechRate; // 3词/秒作为基准
+                    baseLength = (int)(baseLength * Math.Clamp(speedFactor, 0.7, 1.5));
+                }
+            }
+
+            // 应用用户自定义的调整因子
+            baseLength = (int)(baseLength * App.Settings.OptimalLengthAdjustmentFactor);
+
+            // 确保在合理范围内
+            return Math.Clamp(baseLength, 50, 200);
+        }
         private static readonly TimeSpan MAX_WAIT_TIME = TimeSpan.FromSeconds(2);
         private DateTime _lastTranslationTime = DateTime.MinValue;
         private readonly SentenceProcessor _sentenceProcessor;
@@ -99,7 +131,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             string latestCaption = span.ToString().Trim();
 
             // 确保字幕长度适中
-            if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < MIN_CAPTION_BYTES)
+            if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < App.Settings.MinCaptionBytes)
             {
                 // 尝试包含前一个句子
                 var prevEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(PUNC_EOS);
@@ -144,7 +176,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             bool hasNaturalPause = _sentenceProcessor.HasNaturalPause(caption);
 
             // 检查字幕长度是否达到最佳长度
-            bool isOptimalLength = caption.Length >= OPTIMAL_CAPTION_LENGTH;
+            bool isOptimalLength = caption.Length >= GetOptimalCaptionLength(caption);
 
             // 检查是否超过最大等待时间
             bool maxWaitTimeExceeded = timeSinceLastTranslation >= MAX_WAIT_TIME;

@@ -38,6 +38,8 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         private static readonly TimeSpan MAX_WAIT_TIME = TimeSpan.FromSeconds(3);
         private double _currentSpeechRate = 0; // 词/秒
 
+        public double GetCurrentSpeechRate() => _currentSpeechRate;
+
         public MLSentenceProcessor()
         {
             InitializeModel();

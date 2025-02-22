@@ -17,8 +17,52 @@ namespace LiveCaptionsTranslator.models
         private Dictionary<string, TranslateAPIConfig> configs;
 
         private int maxIdleInterval = 10;
-private int maxSyncInterval = 7;
-private int minTranslationLength = 120;
+        private int maxSyncInterval = 7;
+        private int minTranslationLength = 120;
+        private int minCaptionBytes = 15;
+        private int optimalCaptionLength = 100;
+        private bool useAutomaticOptimalLength = true;
+        private double optimalLengthAdjustmentFactor = 1.0;
+
+        public int OptimalCaptionLength
+        {
+            get => optimalCaptionLength;
+            set
+            {
+                optimalCaptionLength = Math.Clamp(value, 50, 200);
+                OnPropertyChanged("OptimalCaptionLength");
+            }
+        }
+
+        public bool UseAutomaticOptimalLength
+        {
+            get => useAutomaticOptimalLength;
+            set
+            {
+                useAutomaticOptimalLength = value;
+                OnPropertyChanged("UseAutomaticOptimalLength");
+            }
+        }
+
+        public double OptimalLengthAdjustmentFactor
+        {
+            get => optimalLengthAdjustmentFactor;
+            set
+            {
+                optimalLengthAdjustmentFactor = Math.Clamp(value, 0.5, 2.0);
+                OnPropertyChanged("OptimalLengthAdjustmentFactor");
+            }
+        }
+
+        public int MinCaptionBytes
+        {
+            get => minCaptionBytes;
+            set
+            {
+                minCaptionBytes = Math.Clamp(value, 0, 20);
+                OnPropertyChanged("MinCaptionBytes");
+            }
+        }
 
         public int MinTranslationLength
         {
