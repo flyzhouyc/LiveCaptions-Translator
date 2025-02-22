@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace LiveCaptionsTranslator.models.CaptionProcessing
 {
-    public static class CaptionTextProcessor
+    public class CaptionTextProcessor
     {
         public static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
         public static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
@@ -13,9 +13,18 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         private const int MAX_CAPTION_BYTES = 170;
         private const int OPTIMAL_CAPTION_LENGTH = 100;
         private static readonly TimeSpan MAX_WAIT_TIME = TimeSpan.FromSeconds(2);
-        private static DateTime _lastTranslationTime = DateTime.MinValue;
+        private DateTime _lastTranslationTime = DateTime.MinValue;
+        private readonly SentenceProcessor _sentenceProcessor;
+        private static readonly CaptionTextProcessor _instance = new CaptionTextProcessor();
 
-        public static string ProcessFullText(string fullText)
+        public static CaptionTextProcessor Instance => _instance;
+
+        private CaptionTextProcessor()
+        {
+            _sentenceProcessor = new SentenceProcessor();
+        }
+
+        public string ProcessFullText(string fullText)
         {
             if (string.IsNullOrEmpty(fullText)) return string.Empty;
 
@@ -40,7 +49,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             return processed;
         }
 
-        public static int GetLastEOSIndex(string fullText)
+        public int GetLastEOSIndex(string fullText)
         {
             if (string.IsNullOrEmpty(fullText)) return -1;
 
@@ -81,7 +90,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             return -1;
         }
 
-        public static string ExtractLatestCaption(string fullText, int lastEOSIndex)
+        public string ExtractLatestCaption(string fullText, int lastEOSIndex)
         {
             if (string.IsNullOrEmpty(fullText)) return string.Empty;
             if (lastEOSIndex < -1) return fullText;
@@ -104,7 +113,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             // 如果字幕过长，尝试在自然停顿点截断
             if (Encoding.UTF8.GetByteCount(latestCaption) > MAX_CAPTION_BYTES)
             {
-                var lastPause = SentenceProcessor.FindLastNaturalPause(latestCaption);
+                var lastPause = _sentenceProcessor.FindLastNaturalPause(latestCaption);
                 if (lastPause > 0)
                 {
                     latestCaption = latestCaption[..lastPause].Trim();
@@ -123,16 +132,16 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             return latestCaption;
         }
 
-        public static bool ShouldTriggerTranslation(string caption, ref int syncCount, int maxSyncInterval, int minTranslationLength)
+        public bool ShouldTriggerTranslation(string caption, ref int syncCount, int maxSyncInterval, int minTranslationLength)
         {
             var currentTime = DateTime.UtcNow;
             var timeSinceLastTranslation = currentTime - _lastTranslationTime;
 
             // 检查是否是完整句子
-            bool isComplete = SentenceProcessor.IsCompleteSentence(caption);
+            bool isComplete = _sentenceProcessor.IsCompleteSentence(caption);
             
             // 检查是否有自然停顿
-            bool hasNaturalPause = SentenceProcessor.HasNaturalPause(caption);
+            bool hasNaturalPause = _sentenceProcessor.HasNaturalPause(caption);
 
             // 检查字幕长度是否达到最佳长度
             bool isOptimalLength = caption.Length >= OPTIMAL_CAPTION_LENGTH;

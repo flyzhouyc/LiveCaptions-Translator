@@ -12,7 +12,7 @@ using LiveCaptionsTranslator.models.CaptionProcessing;
 
 namespace LiveCaptionsTranslator.models
 {
-    public class Caption : INotifyPropertyChanged, IDisposable
+    public class Caption : INotifyPropertyChanged, IDisposable, StreamingTranslation.IStreamingTranslationObserver
     {
         // 单例模式
         private static Caption? instance = null;
@@ -25,6 +25,7 @@ namespace LiveCaptionsTranslator.models
         private readonly Queue<CaptionHistoryItem> captionHistory = new(5);
         private ICaptionProvider _captionProvider;
         private CancellationTokenSource? _syncCts;
+        private readonly SentenceProcessor _sentenceProcessor;
 
         public class CaptionHistoryItem
         {
@@ -74,7 +75,10 @@ namespace LiveCaptionsTranslator.models
             return instance;
         }
 
-        private Caption() { }
+        private Caption() 
+        {
+            _sentenceProcessor = new SentenceProcessor();
+        }
 
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
@@ -133,13 +137,13 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                 }
 
                 previousText = fullText;
-                fullText = CaptionTextProcessor.ProcessFullText(fullText);
+                fullText = CaptionTextProcessor.Instance.ProcessFullText(fullText);
                 
                 // 使用 ValueTask 优化性能
-                ValueTask<int> lastEOSTask = new ValueTask<int>(CaptionTextProcessor.GetLastEOSIndex(fullText));
+                ValueTask<int> lastEOSTask = new ValueTask<int>(CaptionTextProcessor.Instance.GetLastEOSIndex(fullText));
                 int lastEOSIndex = await lastEOSTask;
                 
-                string latestCaption = CaptionTextProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
+                string latestCaption = CaptionTextProcessor.Instance.ExtractLatestCaption(fullText, lastEOSIndex);
 
                 if (Original.CompareTo(latestCaption) != 0)
                 {
@@ -152,12 +156,12 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                     bool shouldTranslate = false;
                     
                     // 1. 检查是否是完整句子
-                    if (SentenceProcessor.IsCompleteSentence(latestCaption))
+                    if (_sentenceProcessor.IsCompleteSentence(latestCaption))
                     {
                         shouldTranslate = true;
                     }
                     // 2. 检查自然停顿
-                    else if (SentenceProcessor.HasNaturalPause(latestCaption) && 
+                    else if (_sentenceProcessor.HasNaturalPause(latestCaption) && 
                              latestCaption.Length >= CalculateDynamicMinTranslationLength(timeSinceLastTranslation))
                     {
                         shouldTranslate = true;
@@ -174,7 +178,7 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                     }
 
                     TranslateFlag = shouldTranslate;
-                    EOSFlag = SentenceProcessor.IsCompleteSentence(latestCaption);
+                    EOSFlag = _sentenceProcessor.IsCompleteSentence(latestCaption);
 
                     if (TranslateFlag)
                     {
@@ -231,6 +235,50 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
     }
 }
 
+        public void OnPartialTranslation(string text, string partialTranslation)
+        {
+            if (text == Original)
+            {
+                Translated = partialTranslation;
+            }
+        }
+
+        public void OnTranslationComplete(string text, string finalTranslation)
+        {
+            if (text == Original)
+            {
+                Translated = finalTranslation;
+                TranslateFlag = false;
+
+                if (!string.IsNullOrEmpty(Original))
+                {
+                    var lastHistory = captionHistory.LastOrDefault();
+                    if (lastHistory == null || 
+                        lastHistory.Original != Original || 
+                        lastHistory.Translated != Translated)
+                    {
+                        if (captionHistory.Count >= 5)
+                            captionHistory.Dequeue();
+                        captionHistory.Enqueue(new CaptionHistoryItem 
+                        { 
+                            Original = Original, 
+                            Translated = Translated 
+                        });
+                        OnPropertyChanged(nameof(CaptionHistory));
+                    }
+                }
+            }
+        }
+
+        public void OnTranslationError(string text, string error)
+        {
+            if (text == Original)
+            {
+                Translated = $"[Translation Failed] {error}";
+                TranslateFlag = false;
+            }
+        }
+
         public async Task TranslateAsync(CancellationToken cancellationToken = default)
         {
             var controller = new TranslationController();
@@ -268,45 +316,16 @@ private int CalculateDynamicMinTranslationLength(int timeSinceLastTranslation)
                                 continue;
                             }
 
-                            // 使用 ValueTask 优化性能
-                            ValueTask<string> translationTask = new ValueTask<string>(controller.TranslateAndLogAsync(Original));
-                            string translatedResult = await translationTask;
-                            
-                            if (!string.IsNullOrEmpty(translatedResult))
+                            // 注册为观察者并开始流式翻译
+                            await StreamingTranslation.Instance.RegisterObserverAsync(Original, this);
+                            try
                             {
-                                Translated = translatedResult;
+                                await StreamingTranslation.Instance.StreamTranslateAsync(Original, cancellationToken);
                                 lastTranslatedText = Original;
-                                TranslateFlag = false;
-
-                                if (!string.IsNullOrEmpty(Original))
-                                {
-                                    var lastHistory = captionHistory.LastOrDefault();
-                                    if (lastHistory == null || 
-                                        lastHistory.Original != Original || 
-                                        lastHistory.Translated != Translated)
-                                    {
-                                        if (captionHistory.Count >= 5)
-                                            captionHistory.Dequeue();
-                                        captionHistory.Enqueue(new CaptionHistoryItem 
-                                        { 
-                                            Original = Original, 
-                                            Translated = Translated 
-                                        });
-                                        OnPropertyChanged(nameof(CaptionHistory));
-                                    }
-                                }
-
-                                // 仅在完整句子时添加短暂延迟
-                                if (EOSFlag)
-                                {
-                                    await Task.Delay(100, cancellationToken); // 减少句子处理延迟
-                                }
                             }
-                            else
+                            finally
                             {
-                                // 如果没有翻译结果，短暂等待后重试
-                                await Task.Delay(50, cancellationToken);
-                                continue;
+                                await StreamingTranslation.Instance.UnregisterObserverAsync(Original, this);
                             }
                         }
 

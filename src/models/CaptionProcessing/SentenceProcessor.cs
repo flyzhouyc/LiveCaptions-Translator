@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace LiveCaptionsTranslator.models.CaptionProcessing
 {
-    public static class SentenceProcessor
+    public class SentenceProcessor
     {
         // 英语句子结束标点符号
         private static readonly char[] SENTENCE_ENDINGS = { '.', '!', '?' };
@@ -34,7 +34,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// <summary>
         /// 判断一个文本是否是一个完整的句子
         /// </summary>
-        public static bool IsCompleteSentence(string text)
+        public virtual bool IsCompleteSentence(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
@@ -60,7 +60,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// <summary>
         /// 检查是否存在自然停顿点
         /// </summary>
-        public static bool HasNaturalPause(string text)
+        public virtual bool HasNaturalPause(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
             return NATURAL_PAUSE_REGEX.IsMatch(text);
@@ -69,7 +69,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// <summary>
         /// 将文本拆分为完整句子
         /// </summary>
-        public static List<string> SplitIntoCompleteSentences(string text)
+        public virtual List<string> SplitIntoCompleteSentences(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return new List<string>();
 
@@ -106,7 +106,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// <summary>
         /// 合并句子片段，直到形成完整句子
         /// </summary>
-        public static string? AccumulateSentence(string currentText, string newFragment, int maxLength = 300)
+        public virtual string? AccumulateSentence(string currentText, string newFragment, int maxLength = 300)
         {
             if (string.IsNullOrWhiteSpace(newFragment)) return null;
 
@@ -136,7 +136,7 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// <summary>
         /// 查找最后一个自然停顿点的位置
         /// </summary>
-        public static int FindLastNaturalPause(string text)
+        public virtual int FindLastNaturalPause(string text)
         {
             var match = NATURAL_PAUSE_REGEX.Match(text);
             var lastMatch = match;
