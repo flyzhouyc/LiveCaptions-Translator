@@ -135,36 +135,49 @@
                 </LinearGradientBrush>
             </DataGrid.BorderBrush>
             <DataGrid.Columns>
-                <DataGridTextColumn
-                    Width="*"
-                    MinWidth="90"
-                    MaxWidth="90"
-                    Binding="{Binding Timestamp}"
-                    FontFamily="Segoe UI Variable Text"
-                    Header="Time" />
-                <DataGridTextColumn
-                    Width="3*"
-                    Binding="{Binding SourceText}"
-                    FontFamily="Segoe UI Variable Text"
-                    Header="Source" />
-                <DataGridTextColumn
-                    Width="3*"
-                    Binding="{Binding TranslatedText}"
-                    FontFamily="Segoe UI Variable Text Semibold"
-                    Header="Translated" />
-                <DataGridTextColumn
-                    Width="40"
-                    MinWidth="55"
-                    MaxWidth="55"
-                    Binding="{Binding TargetLanguage}"
-                    FontFamily="Segoe UI Variable Text"
-                    Header="Target" />
-                <DataGridTextColumn
-                    Width="*"
-                    MaxWidth="120"
-                    Binding="{Binding ApiUsed}"
-                    FontFamily="Segoe UI Variable Text"
-                    Header="API" />
+                <DataGridTemplateColumn Width="0.4*" Header="Timestamp">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock
+                                FontFamily="Segoe UI Variable Text"
+                                Text="{Binding Timestamp}"
+                                TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Width="*" Header="Source Text">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock
+                                FontFamily="Segoe UI Variable Text"
+                                Text="{Binding SourceText}"
+                                TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Width="*" Header="Translated Text">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock
+                                FontFamily="Segoe UI Variable Text"
+                                Text="{Binding TranslatedText}"
+                                TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Width="0.3*" Header="API Used">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock
+                                FontFamily="Segoe UI Variable Text"
+                                Text="{Binding ApiUsed}"
+                                TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
     </Grid>
