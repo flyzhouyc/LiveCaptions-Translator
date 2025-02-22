@@ -112,60 +112,91 @@ public async Task SyncAsync(CancellationToken externalToken = default)
 
     Console.WriteLine($"Starting sync with provider: {_captionProvider.ProviderName}");
 
+    var textProcessor = CaptionTextProcessor.Instance;
+    var metrics = _optimizer.GetPerformanceMetrics();
+    int consecutiveEmptyCount = 0;
+    int consecutiveErrorCount = 0;
+
     try
     {
         while (!token.IsCancellationRequested)
         {
             if (PauseFlag || App.Window == null)
             {
-                await Task.Delay(50, token); // 增加暂停时的延迟
+                await Task.Delay(Math.Min(50 * consecutiveEmptyCount, 200), token);
                 continue;
             }
 
             try
             {
-                // 首先尝试使用CaptionProvider获取字幕
-                string fullText = (await _captionProvider.GetCaptionsAsync(App.Window, token)).Trim();
+                string fullText;
+                // 使用预测性缓存获取字幕
+                fullText = await _optimizer.GetCaptionTextAsync(App.Window);
                 
-                // 如果CaptionProvider失败，使用优化器的备用方案
+                // 如果预测性缓存失败，尝试使用CaptionProvider
                 if (string.IsNullOrEmpty(fullText))
                 {
-                    fullText = await _optimizer.GetCaptionTextAsync(App.Window);
+                    fullText = (await _captionProvider.GetCaptionsAsync(App.Window, token)).Trim();
                 }
 
                 if (string.IsNullOrEmpty(fullText))
                 {
+                    consecutiveEmptyCount++;
                     int delay = _optimizer.GetOptimalDelay(fullText, _previousText);
-                    Console.WriteLine($"Empty text, waiting {delay}ms");
+                    if (consecutiveEmptyCount > 10)
+                    {
+                        Console.WriteLine($"Multiple empty results, increasing delay to {delay}ms");
+                    }
                     await Task.Delay(delay, token);
                     continue;
                 }
 
-                fullText = CaptionTextProcessor.Instance.ProcessFullText(fullText);
-                
-                // 只有当文本真正变化时才进行处理
-                if (fullText != _previousText)
-                {
-                    int lastEOSIndex = CaptionTextProcessor.Instance.GetLastEOSIndex(fullText);
-                    string latestCaption = CaptionTextProcessor.Instance.ExtractLatestCaption(fullText, lastEOSIndex);
+                consecutiveEmptyCount = 0;
+                consecutiveErrorCount = 0;
 
-                    if (Original.CompareTo(latestCaption) != 0)
+                fullText = textProcessor.ProcessFullText(fullText);
+                
+                // 使用高效的字符串比较
+                if (!string.Equals(fullText, _previousText, StringComparison.Ordinal))
+                {
+                    int lastEOSIndex = textProcessor.GetLastEOSIndex(fullText);
+                    string latestCaption = textProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
+
+                    // 使用高效的字符串比较
+                    if (!string.Equals(Original, latestCaption, StringComparison.Ordinal))
                     {
                         Original = latestCaption;
-                        Console.WriteLine($"New caption: {latestCaption}");
                         
-                        // 使用优化器决定是否翻译
-                        TranslateFlag = await _optimizer.ShouldTranslateAsync(latestCaption);
-                        if (TranslateFlag)
+                        // 异步触发翻译检查
+                        _ = Task.Run(async () =>
                         {
-                            Console.WriteLine("Translation triggered");
-                        }
+                            try
+                            {
+                                TranslateFlag = await _optimizer.ShouldTranslateAsync(latestCaption);
+                                if (TranslateFlag)
+                                {
+                                    Console.WriteLine($"Translation triggered for: {latestCaption}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Translation check error: {ex.Message}");
+                            }
+                        });
                     }
 
                     _previousText = fullText;
                 }
 
+                metrics = _optimizer.GetPerformanceMetrics();
                 int nextDelay = _optimizer.GetOptimalDelay(fullText, _previousText);
+                
+                // 动态调整延迟
+                if (metrics.AverageDelay < 20 && consecutiveErrorCount == 0)
+                {
+                    nextDelay = Math.Max(5, nextDelay - 2);
+                }
+                
                 await Task.Delay(nextDelay, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -174,8 +205,12 @@ public async Task SyncAsync(CancellationToken externalToken = default)
             }
             catch (Exception ex)
             {
+                consecutiveErrorCount++;
                 Console.WriteLine($"Sync error: {ex.Message}");
-                await Task.Delay(100, token); // 增加错误恢复延迟
+                
+                // 使用指数退避策略
+                int errorDelay = Math.Min(50 * (1 << Math.Min(consecutiveErrorCount, 4)), 500);
+                await Task.Delay(errorDelay, token);
             }
         }
     }
@@ -199,6 +234,7 @@ public async Task SyncAsync(CancellationToken externalToken = default)
             string lastTranslatedText = string.Empty;
             var metrics = _optimizer.GetPerformanceMetrics();
             int consecutiveErrors = 0;
+            int pauseCount = 0;
 
             try
             {
@@ -206,44 +242,48 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                 {
                     if (PauseFlag)
                     {
-                        int pauseCount = 0;
-                        while (PauseFlag && !cancellationToken.IsCancellationRequested)
+                        if (pauseCount++ > 30 && App.Window != null)
                         {
-                            if (pauseCount > 30 && App.Window != null)
-                            {
-                                App.Window = null;
-                                LiveCaptionsHandler.KillLiveCaptions();
-                            }
-                            await Task.Delay(200, cancellationToken); // 增加暂停检查间隔
-                            pauseCount++;
+                            App.Window = null;
+                            LiveCaptionsHandler.KillLiveCaptions();
+                            pauseCount = 0;
                         }
+                        await Task.Delay(100, cancellationToken);
                         continue;
                     }
+                    pauseCount = 0;
 
                     try
                     {
-                        if (TranslateFlag && Original != lastTranslatedText)
+                        if (TranslateFlag && !string.Equals(Original, lastTranslatedText, StringComparison.Ordinal))
                         {
-                            Console.WriteLine($"Translating: {Original}");
-                            
-                            // 使用优化器的置信度来决定翻译优先级
                             metrics = _optimizer.GetPerformanceMetrics();
                             
-                            // 减少翻译延迟
-                            int delay = metrics.LastConfidence > 0.8f ? 5 : 
-                                      metrics.LastConfidence > 0.5f ? 10 : 15;
-
-                            // 尝试翻译，最多重试3次
-                            string translatedResult = null;
-                            int retryCount = 0;
-                            while (retryCount < 3 && string.IsNullOrEmpty(translatedResult))
+                            // 优化的翻译延迟策略
+                            int baseDelay = metrics.LastConfidence switch
                             {
-                                translatedResult = await controller.TranslateAndLogAsync(Original);
-                                if (string.IsNullOrEmpty(translatedResult))
-                                {
-                                    retryCount++;
-                                    await Task.Delay(50 * retryCount, cancellationToken);
-                                }
+                                var c when c > 0.9f => 3,
+                                var c when c > 0.7f => 5,
+                                var c when c > 0.5f => 8,
+                                _ => 10
+                            };
+
+                            // 使用信号量限制并发翻译请求
+                            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                                cancellationToken, timeoutCts.Token);
+
+                            string translatedResult = null;
+                            var translationTask = controller.TranslateAndLogAsync(Original);
+
+                            try
+                            {
+                                translatedResult = await translationTask.WaitAsync(linkedCts.Token);
+                            }
+                            catch (TimeoutException)
+                            {
+                                Console.WriteLine("Translation timeout, will retry");
+                                consecutiveErrors++;
                             }
 
                             if (!string.IsNullOrEmpty(translatedResult))
@@ -253,13 +293,13 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                                 TranslateFlag = false;
                                 consecutiveErrors = 0;
 
-                                // 更新历史记录
+                                // 高效的历史记录更新
                                 if (!string.IsNullOrEmpty(Original))
                                 {
                                     var lastHistory = captionHistory.LastOrDefault();
                                     if (lastHistory == null || 
-                                        lastHistory.Original != Original || 
-                                        lastHistory.Translated != Translated)
+                                        !string.Equals(lastHistory.Original, Original, StringComparison.Ordinal) || 
+                                        !string.Equals(lastHistory.Translated, Translated, StringComparison.Ordinal))
                                     {
                                         if (captionHistory.Count >= 5)
                                             captionHistory.Dequeue();
@@ -272,20 +312,25 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                                     }
                                 }
 
-                                Console.WriteLine($"Translation success: {translatedResult}");
+                                // 动态调整下一次延迟
+                                baseDelay = Math.Max(3, baseDelay - (consecutiveErrors == 0 ? 1 : 0));
                             }
                             else
                             {
-                                Console.WriteLine("Translation failed after retries");
+                                Console.WriteLine("Translation failed");
                                 consecutiveErrors++;
+                                baseDelay *= 2; // 翻译失败时增加延迟
                             }
 
-                            await Task.Delay(delay, cancellationToken);
+                            await Task.Delay(baseDelay, cancellationToken);
                         }
                         else
                         {
-                            // 减少检查间隔
-                            await Task.Delay(metrics.LastConfidence > 0.5f ? 15 : 25, cancellationToken);
+                            // 优化空闲检查间隔
+                            await Task.Delay(
+                                metrics.LastConfidence > 0.7f ? 10 : 
+                                metrics.LastConfidence > 0.4f ? 15 : 20, 
+                                cancellationToken);
                         }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -297,8 +342,8 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                         Console.WriteLine($"Translation error: {ex.Message}");
                         consecutiveErrors++;
                         
-                        // 如果连续错误过多，增加等待时间
-                        int errorDelay = Math.Min(100 * consecutiveErrors, 1000);
+                        // 优化的错误恢复策略
+                        int errorDelay = Math.Min(50 * (1 << Math.Min(consecutiveErrors, 4)), 800);
                         await Task.Delay(errorDelay, cancellationToken);
                     }
                 }

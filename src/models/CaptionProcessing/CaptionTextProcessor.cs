@@ -11,6 +11,12 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         
         // Moved to App.Settings.MinCaptionBytes
         private const int MAX_CAPTION_BYTES = 170;
+        private readonly Dictionary<string, int> _languageLengthCache = new();
+        private readonly Dictionary<string, DateTime> _lastProcessingTimes = new();
+        private float _currentSpeedFactor = 1.0f;
+        private DateTime _lastSpeedUpdate = DateTime.MinValue;
+        private readonly TimeSpan _speedUpdateInterval = TimeSpan.FromSeconds(1);
+
         private int GetOptimalCaptionLength(string text)
         {
             if (!App.Settings.UseAutomaticOptimalLength)
@@ -18,31 +24,47 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
                 return App.Settings.OptimalCaptionLength;
             }
 
-            // 基础长度基于目标语言
-            int baseLength = App.Settings.TargetLanguage switch
+            var targetLang = App.Settings.TargetLanguage;
+            
+            // 使用缓存的语言基础长度
+            if (!_languageLengthCache.TryGetValue(targetLang, out int baseLength))
             {
-                "zh-CN" or "zh-TW" or "ja" or "ko" => 75,  // 东亚语言字符较少
-                "en" => 120,                                // 英语需要更多字符
-                _ => 100                                    // 其他语言默认值
-            };
+                baseLength = targetLang switch
+                {
+                    "zh-CN" or "zh-TW" or "ja" or "ko" => 75,  // 东亚语言字符较少
+                    "en" => 120,                                // 英语需要更多字符
+                    _ => 100                                    // 其他语言默认值
+                };
+                _languageLengthCache[targetLang] = baseLength;
+            }
 
-            // 根据语速调整
+            // 定期更新语速因子
+            var now = DateTime.Now;
+            if (now - _lastSpeedUpdate > _speedUpdateInterval)
+            {
+                UpdateSpeedFactor();
+                _lastSpeedUpdate = now;
+            }
+
+            // 应用语速和用户调整因子
+            float adjustedLength = baseLength * _currentSpeedFactor * (float)App.Settings.OptimalLengthAdjustmentFactor;
+
+            // 确保在合理范围内
+            return Math.Clamp((int)adjustedLength, 50, 200);
+        }
+
+        private void UpdateSpeedFactor()
+        {
             if (_sentenceProcessor is MLSentenceProcessor mlProcessor)
             {
                 var speechRate = mlProcessor.GetCurrentSpeechRate();
                 if (speechRate > 0)
                 {
-                    // 语速快时减少长度，语速慢时增加长度
-                    double speedFactor = 3.0 / speechRate; // 3词/秒作为基准
-                    baseLength = (int)(baseLength * Math.Clamp(speedFactor, 0.7, 1.5));
+                    // 使用平滑过渡
+                    float targetFactor = (float)Math.Clamp(3.0 / speechRate, 0.7, 1.5);
+                    _currentSpeedFactor = _currentSpeedFactor * 0.7f + targetFactor * 0.3f;
                 }
             }
-
-            // 应用用户自定义的调整因子
-            baseLength = (int)(baseLength * App.Settings.OptimalLengthAdjustmentFactor);
-
-            // 确保在合理范围内
-            return Math.Clamp(baseLength, 50, 200);
         }
         private static readonly TimeSpan MAX_WAIT_TIME = TimeSpan.FromSeconds(2);
         private DateTime _lastTranslationTime = DateTime.MinValue;
@@ -56,63 +78,127 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             _sentenceProcessor = new SentenceProcessor();
         }
 
+        private readonly char[] _newlineChars = new[] { '\r', '\n' };
+        private readonly StringBuilder _sharedBuilder = new(256);
+
         public string ProcessFullText(string fullText)
         {
             if (string.IsNullOrEmpty(fullText)) return string.Empty;
 
-            StringBuilder sb = new StringBuilder(fullText);
-            
-            // 处理换行符和标点符号
-            foreach (char eos in PUNC_EOS)
+            lock (_sharedBuilder)
             {
-                int index = sb.ToString().IndexOf($"{eos}\n");
-                while (index != -1)
+                _sharedBuilder.Clear();
+                _sharedBuilder.Append(fullText);
+                
+                // 优化的标点处理
+                int length = _sharedBuilder.Length;
+                for (int i = 0; i < length - 1; i++)
                 {
-                    sb[index + 1] = eos;
-                    sb.Remove(index, 1);
-                    index = sb.ToString().IndexOf($"{eos}\n");
+                    char current = _sharedBuilder[i];
+                    if (Array.IndexOf(PUNC_EOS, current) != -1)
+                    {
+                        // 检查并移除后续的换行符
+                        int j = i + 1;
+                        while (j < length && Array.IndexOf(_newlineChars, _sharedBuilder[j]) != -1)
+                        {
+                            _sharedBuilder.Remove(j, 1);
+                            length--;
+                        }
+                    }
                 }
-            }
 
-            // 处理多余的空白字符
-            string processed = sb.ToString().Trim();
-            processed = Regex.Replace(processed, @"\s+", " ");
-            
-            return processed;
+                // 高效的空白字符处理
+                bool inWhitespace = false;
+                int writeIndex = 0;
+                for (int readIndex = 0; readIndex < length; readIndex++)
+                {
+                    char c = _sharedBuilder[readIndex];
+                    if (char.IsWhiteSpace(c))
+                    {
+                        if (!inWhitespace)
+                        {
+                            _sharedBuilder[writeIndex++] = ' ';
+                            inWhitespace = true;
+                        }
+                    }
+                    else
+                    {
+                        _sharedBuilder[writeIndex++] = c;
+                        inWhitespace = false;
+                    }
+                }
+
+                // 移除尾部空白
+                while (writeIndex > 0 && char.IsWhiteSpace(_sharedBuilder[writeIndex - 1]))
+                {
+                    writeIndex--;
+                }
+
+                _sharedBuilder.Length = writeIndex;
+                return _sharedBuilder.ToString();
+            }
         }
+
+        private readonly HashSet<string> _abbreviationCache = new(StringComparer.OrdinalIgnoreCase);
+        private bool _abbreviationCacheInitialized;
 
         public int GetLastEOSIndex(string fullText)
         {
             if (string.IsNullOrEmpty(fullText)) return -1;
 
+            // 延迟初始化缩写缓存
+            if (!_abbreviationCacheInitialized)
+            {
+                lock (_abbreviationCache)
+                {
+                    if (!_abbreviationCacheInitialized)
+                    {
+                        foreach (var abbr in SentenceProcessor.ABBREVIATIONS)
+                        {
+                            _abbreviationCache.Add(abbr);
+                        }
+                        _abbreviationCacheInitialized = true;
+                    }
+                }
+            }
+
             ReadOnlySpan<char> span = fullText.AsSpan();
+            ReadOnlySpan<char> eosSpan = PUNC_EOS.AsSpan();
             
-            // 优化：如果最后一个字符是句子结束符，直接返回
-            if (span.Length > 0 && PUNC_EOS.AsSpan().Contains(span[^1]))
+            // 快速路径：检查最后一个字符
+            if (span.Length > 0 && eosSpan.Contains(span[^1]))
             {
                 return span.Length - 1;
             }
 
-            // 从后向前查找最后一个句子结束符
+            // 优化的反向搜索
             for (int i = span.Length - 1; i >= 0; i--)
             {
-                if (PUNC_EOS.AsSpan().Contains(span[i]))
+                if (eosSpan.Contains(span[i]))
                 {
-                    // 检查是否是缩写词的一部分
-                    bool isAbbreviation = false;
+                    // 仅对句点进行缩写检查
                     if (span[i] == '.' && i > 0)
                     {
-                        var potentialAbbr = span[(i-1)..].ToString();
-                        foreach (var abbr in SentenceProcessor.ABBREVIATIONS)
+                        // 高效的缩写检查
+                        bool isAbbreviation = false;
+                        int start = Math.Max(0, i - 5); // 最长缩写词假设为5个字符
+                        var checkSpan = span[start..(i + 1)];
+                        
+                        foreach (var abbr in _abbreviationCache)
                         {
-                            if (potentialAbbr.StartsWith(abbr, StringComparison.OrdinalIgnoreCase))
+                            if (checkSpan.ToString().EndsWith(abbr, StringComparison.OrdinalIgnoreCase))
                             {
                                 isAbbreviation = true;
                                 break;
                             }
                         }
+                        
+                        if (!isAbbreviation)
+                        {
+                            return i;
+                        }
                     }
-                    if (!isAbbreviation)
+                    else
                     {
                         return i;
                     }
