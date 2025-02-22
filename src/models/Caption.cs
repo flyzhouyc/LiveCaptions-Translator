@@ -116,6 +116,10 @@ public async Task SyncAsync(CancellationToken externalToken = default)
     var metrics = _optimizer.GetPerformanceMetrics();
     int consecutiveEmptyCount = 0;
     int consecutiveErrorCount = 0;
+    DateTime lastUpdateTime = DateTime.Now;
+    int accumulatedLength = 0;
+    const int FORCE_UPDATE_INTERVAL_MS = 3000; // 3秒强制更新
+    const int MAX_ACCUMULATED_LENGTH = 100; // 最大累积长度
 
     try
     {
@@ -139,14 +143,21 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                     fullText = (await _captionProvider.GetCaptionsAsync(App.Window, token)).Trim();
                 }
 
+                var now = DateTime.Now;
+                bool shouldForceUpdate = (now - lastUpdateTime).TotalMilliseconds >= FORCE_UPDATE_INTERVAL_MS;
+
                 if (string.IsNullOrEmpty(fullText))
                 {
                     consecutiveEmptyCount++;
-                    int delay = _optimizer.GetOptimalDelay(fullText, _previousText);
-                    if (consecutiveEmptyCount > 10)
+                    if (shouldForceUpdate && !string.IsNullOrEmpty(Original))
                     {
-                        Console.WriteLine($"Multiple empty results, increasing delay to {delay}ms");
+                        // 强制清空，防止字幕卡住
+                        Original = string.Empty;
+                        _previousText = string.Empty;
+                        accumulatedLength = 0;
+                        lastUpdateTime = now;
                     }
+                    int delay = _optimizer.GetOptimalDelay(fullText, _previousText);
                     await Task.Delay(delay, token);
                     continue;
                 }
@@ -156,17 +167,24 @@ public async Task SyncAsync(CancellationToken externalToken = default)
 
                 fullText = textProcessor.ProcessFullText(fullText);
                 
-                // 使用高效的字符串比较
-                if (!string.Equals(fullText, _previousText, StringComparison.Ordinal))
+                // 检查文本变化
+                bool textChanged = !string.Equals(fullText, _previousText, StringComparison.Ordinal);
+                bool shouldUpdate = textChanged || shouldForceUpdate;
+
+                if (shouldUpdate)
                 {
                     int lastEOSIndex = textProcessor.GetLastEOSIndex(fullText);
                     string latestCaption = textProcessor.ExtractLatestCaption(fullText, lastEOSIndex);
 
-                    // 使用高效的字符串比较
-                    if (!string.Equals(Original, latestCaption, StringComparison.Ordinal))
+                    // 累积长度检查
+                    accumulatedLength += latestCaption.Length;
+                    if (accumulatedLength > MAX_ACCUMULATED_LENGTH || shouldForceUpdate)
                     {
+                        // 强制更新并重置累积
                         Original = latestCaption;
-                        
+                        accumulatedLength = latestCaption.Length;
+                        lastUpdateTime = now;
+
                         // 异步触发翻译检查
                         _ = Task.Run(async () =>
                         {
@@ -184,6 +202,12 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                             }
                         });
                     }
+                    else if (!string.Equals(Original, latestCaption, StringComparison.Ordinal))
+                    {
+                        // 正常更新
+                        Original = latestCaption;
+                        lastUpdateTime = now;
+                    }
 
                     _previousText = fullText;
                 }
@@ -192,7 +216,12 @@ public async Task SyncAsync(CancellationToken externalToken = default)
                 int nextDelay = _optimizer.GetOptimalDelay(fullText, _previousText);
                 
                 // 动态调整延迟
-                if (metrics.AverageDelay < 20 && consecutiveErrorCount == 0)
+                if (accumulatedLength > MAX_ACCUMULATED_LENGTH / 2)
+                {
+                    // 当累积较多时，减少延迟
+                    nextDelay = Math.Max(5, nextDelay / 2);
+                }
+                else if (metrics.AverageDelay < 20 && consecutiveErrorCount == 0)
                 {
                     nextDelay = Math.Max(5, nextDelay - 2);
                 }
@@ -207,6 +236,15 @@ public async Task SyncAsync(CancellationToken externalToken = default)
             {
                 consecutiveErrorCount++;
                 Console.WriteLine($"Sync error: {ex.Message}");
+                
+                if (consecutiveErrorCount > 5)
+                {
+                    // 连续错误过多时清空状态
+                    Original = string.Empty;
+                    _previousText = string.Empty;
+                    accumulatedLength = 0;
+                    lastUpdateTime = DateTime.Now;
+                }
                 
                 // 使用指数退避策略
                 int errorDelay = Math.Min(50 * (1 << Math.Min(consecutiveErrorCount, 4)), 500);

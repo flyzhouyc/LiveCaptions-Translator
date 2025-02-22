@@ -27,9 +27,19 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
         // 检测自然停顿的正则表达式
         private static readonly Regex NATURAL_PAUSE_REGEX = new Regex(
-            @"[,;:\-—]\s|\.{3}\s|\n|\r\n",
+            @"[,;:\-—]\s|\.{3}\s|\n|\r\n|\s\-\s|\s\–\s|\s\…\s|\(\s|\)\s|\s\(|\s\)|\s\-\-\s",
             RegexOptions.Compiled
         );
+
+        // 检测语音停顿的正则表达式
+        private static readonly Regex SPEECH_PAUSE_REGEX = new Regex(
+            @"\s{2,}|(?<=\w)\s+(?=\w{3,})|(?<=\w{3,})\s+(?=\w)",
+            RegexOptions.Compiled
+        );
+
+        // 最大累积时间
+        private static readonly TimeSpan MAX_ACCUMULATION_TIME = TimeSpan.FromSeconds(5);
+        private DateTime _lastSplitTime = DateTime.MinValue;
 
         /// <summary>
         /// 判断一个文本是否是一个完整的句子
@@ -63,7 +73,21 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         public virtual bool HasNaturalPause(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
-            return NATURAL_PAUSE_REGEX.IsMatch(text);
+            
+            // 检查标准的自然停顿
+            if (NATURAL_PAUSE_REGEX.IsMatch(text)) return true;
+            
+            // 检查语音停顿
+            if (SPEECH_PAUSE_REGEX.IsMatch(text)) return true;
+            
+            // 检查时间累积
+            if (DateTime.Now - _lastSplitTime > MAX_ACCUMULATION_TIME)
+            {
+                _lastSplitTime = DateTime.Now;
+                return true;
+            }
+            
+            return false;
         }
 
         /// <summary>
@@ -76,28 +100,52 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
             var sentences = new List<string>();
             var currentSentence = new StringBuilder();
             var words = text.Split(' ');
+            var currentLength = 0;
+            var lastSplitTime = DateTime.Now;
 
             foreach (var word in words)
             {
                 currentSentence.Append(word).Append(' ');
                 var current = currentSentence.ToString().Trim();
+                currentLength += word.Length;
 
+                bool shouldSplit = false;
+                
+                // 检查完整句子
                 if (IsCompleteSentence(current))
                 {
-                    sentences.Add(current);
-                    currentSentence.Clear();
+                    shouldSplit = true;
                 }
-                else if (HasNaturalPause(current) && currentSentence.Length > 50)
+                // 检查自然停顿
+                else if (HasNaturalPause(current))
                 {
-                    // 如果遇到自然停顿且积累了足够长度的文本，也考虑拆分
+                    // 慢速时降低长度要求
+                    int minLength = DateTime.Now.Subtract(lastSplitTime).TotalSeconds > 2 ? 20 : 40;
+                    shouldSplit = currentLength >= minLength;
+                }
+                // 检查时间累积
+                else if (DateTime.Now - lastSplitTime > MAX_ACCUMULATION_TIME && currentLength > 10)
+                {
+                    shouldSplit = true;
+                }
+
+                if (shouldSplit)
+                {
                     sentences.Add(current);
                     currentSentence.Clear();
+                    currentLength = 0;
+                    lastSplitTime = DateTime.Now;
+                    _lastSplitTime = lastSplitTime;
                 }
             }
 
             if (currentSentence.Length > 0)
             {
-                sentences.Add(currentSentence.ToString().Trim());
+                var remaining = currentSentence.ToString().Trim();
+                if (!string.IsNullOrEmpty(remaining))
+                {
+                    sentences.Add(remaining);
+                }
             }
 
             return sentences;
@@ -138,14 +186,35 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// </summary>
         public virtual int FindLastNaturalPause(string text)
         {
-            var match = NATURAL_PAUSE_REGEX.Match(text);
-            var lastMatch = match;
-            while (match.Success)
+            if (string.IsNullOrEmpty(text)) return -1;
+
+            // 首先检查标准的自然停顿
+            var standardMatch = NATURAL_PAUSE_REGEX.Match(text);
+            var lastStandardMatch = standardMatch;
+            while (standardMatch.Success)
             {
-                lastMatch = match;
-                match = match.NextMatch();
+                lastStandardMatch = standardMatch;
+                standardMatch = standardMatch.NextMatch();
             }
-            return lastMatch.Success ? lastMatch.Index : -1;
+
+            // 然后检查语音停顿
+            var speechMatch = SPEECH_PAUSE_REGEX.Match(text);
+            var lastSpeechMatch = speechMatch;
+            while (speechMatch.Success)
+            {
+                lastSpeechMatch = speechMatch;
+                speechMatch = speechMatch.NextMatch();
+            }
+
+            // 选择最后出现的停顿点
+            int standardIndex = lastStandardMatch.Success ? lastStandardMatch.Index : -1;
+            int speechIndex = lastSpeechMatch.Success ? lastSpeechMatch.Index : -1;
+
+            if (standardIndex >= 0 && speechIndex >= 0)
+            {
+                return Math.Max(standardIndex, speechIndex);
+            }
+            return Math.Max(standardIndex, speechIndex);
         }
     }
 }

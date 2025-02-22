@@ -15,7 +15,10 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         private readonly Dictionary<string, DateTime> _lastProcessingTimes = new();
         private float _currentSpeedFactor = 1.0f;
         private DateTime _lastSpeedUpdate = DateTime.MinValue;
+        private DateTime _lastForceSplitTime = DateTime.MinValue;
         private readonly TimeSpan _speedUpdateInterval = TimeSpan.FromSeconds(1);
+        private readonly TimeSpan _forceSplitInterval = TimeSpan.FromSeconds(5);
+        private int _accumulatedCharCount = 0;
 
         private int GetOptimalCaptionLength(string text)
         {
@@ -215,22 +218,48 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
             ReadOnlySpan<char> span = fullText.AsSpan(lastEOSIndex + 1);
             string latestCaption = span.ToString().Trim();
+            
+            var now = DateTime.Now;
+            bool shouldForceSplit = now - _lastForceSplitTime > _forceSplitInterval;
+
+            // 更新累积字符计数
+            _accumulatedCharCount += latestCaption.Length;
+
+            // 检查是否需要强制分割
+            if (shouldForceSplit && _accumulatedCharCount > 50)
+            {
+                _lastForceSplitTime = now;
+                _accumulatedCharCount = 0;
+                return latestCaption;
+            }
 
             // 确保字幕长度适中
-            if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < App.Settings.MinCaptionBytes)
+            if (lastEOSIndex > 0)
             {
-                // 尝试包含前一个句子
-                var prevEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(PUNC_EOS);
-                if (prevEOSIndex >= 0)
+                int minBytes = shouldForceSplit ? 
+                    App.Settings.MinCaptionBytes / 2 : // 强制分割时降低最小字节要求
+                    App.Settings.MinCaptionBytes;
+
+                if (Encoding.UTF8.GetByteCount(latestCaption) < minBytes)
                 {
-                    span = fullText.AsSpan(prevEOSIndex + 1);
-                    latestCaption = span.ToString().Trim();
+                    // 尝试包含前一个句子
+                    var prevEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(PUNC_EOS);
+                    if (prevEOSIndex >= 0)
+                    {
+                        span = fullText.AsSpan(prevEOSIndex + 1);
+                        latestCaption = span.ToString().Trim();
+                    }
                 }
             }
 
             // 如果字幕过长，尝试在自然停顿点截断
-            if (Encoding.UTF8.GetByteCount(latestCaption) > MAX_CAPTION_BYTES)
+            int maxBytes = shouldForceSplit ? 
+                MAX_CAPTION_BYTES / 2 : // 强制分割时降低最大字节限制
+                MAX_CAPTION_BYTES;
+
+            if (Encoding.UTF8.GetByteCount(latestCaption) > maxBytes)
             {
+                // 首先尝试在自然停顿点截断
                 var lastPause = _sentenceProcessor.FindLastNaturalPause(latestCaption);
                 if (lastPause > 0)
                 {
@@ -238,16 +267,45 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
                 }
                 else
                 {
-                    // 如果没有找到自然停顿点，使用逗号等标点
+                    // 然后尝试在标点处截断
                     int commaIndex = latestCaption.LastIndexOfAny(PUNC_COMMA);
                     if (commaIndex > 0)
                     {
                         latestCaption = latestCaption[..commaIndex].Trim();
                     }
+                    else if (latestCaption.Length > maxBytes / 2)
+                    {
+                        // 最后在词边界处截断
+                        int wordBoundary = FindLastWordBoundary(latestCaption, maxBytes / 2);
+                        if (wordBoundary > 0)
+                        {
+                            latestCaption = latestCaption[..wordBoundary].Trim();
+                        }
+                    }
                 }
             }
 
+            // 重置累积计数如果发生了分割
+            if (latestCaption.Length < span.Length)
+            {
+                _accumulatedCharCount = 0;
+            }
+
             return latestCaption;
+        }
+
+        private int FindLastWordBoundary(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || maxLength >= text.Length)
+                return -1;
+
+            for (int i = maxLength; i > 0; i--)
+            {
+                if (char.IsWhiteSpace(text[i]))
+                    return i;
+            }
+
+            return maxLength;
         }
 
         public bool ShouldTriggerTranslation(string caption, ref int syncCount, int maxSyncInterval, int minTranslationLength)

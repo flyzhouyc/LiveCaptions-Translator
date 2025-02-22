@@ -32,13 +32,18 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         private static PredictionEngine<SentenceData, SentencePrediction> _predictionEngine;
         
         // 动态等待时间相关
-        private const int SPEECH_RATE_WINDOW_SIZE = 10;
-        private readonly Queue<(DateTime timestamp, int wordCount)> _speechRateWindow = new();
-        private static readonly TimeSpan MIN_WAIT_TIME = TimeSpan.FromSeconds(0.5);
-        private static readonly TimeSpan MAX_WAIT_TIME = TimeSpan.FromSeconds(3);
+        private const int MIN_WINDOW_SIZE = 3;
+        private const int MAX_WINDOW_SIZE = 10;
+        private readonly Queue<(DateTime timestamp, int wordCount, int charCount)> _speechRateWindow = new();
+        private static readonly TimeSpan MIN_WAIT_TIME = TimeSpan.FromSeconds(0.3);
+        private static readonly TimeSpan MAX_WAIT_TIME = TimeSpan.FromSeconds(1.5);
         private double _currentSpeechRate = 0; // 词/秒
+        private double _currentCharRate = 0; // 字符/秒
+        private DateTime _lastActivityTime = DateTime.MinValue;
+        private int _currentWindowSize = MIN_WINDOW_SIZE;
 
         public double GetCurrentSpeechRate() => _currentSpeechRate;
+        public double GetCurrentCharRate() => _currentCharRate;
 
         public MLSentenceProcessor()
         {
@@ -79,40 +84,81 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
         public TimeSpan GetDynamicWaitTime()
         {
-            if (_currentSpeechRate <= 0) return MAX_WAIT_TIME;
-
-            // 根据语速动态调整等待时间
-            // 语速快时等待时间短，语速慢时等待时间长
-            double normalizedRate = Math.Min(_currentSpeechRate / 3.0, 1.0); // 3词/秒作为基准
-            double waitTime = MAX_WAIT_TIME.TotalSeconds - 
-                (MAX_WAIT_TIME.TotalSeconds - MIN_WAIT_TIME.TotalSeconds) * normalizedRate;
+            var timeSinceLastActivity = DateTime.Now - _lastActivityTime;
             
-            return TimeSpan.FromSeconds(waitTime);
+            // 如果超过5秒没有活动，使用最小等待时间
+            if (timeSinceLastActivity.TotalSeconds > 5)
+            {
+                return MIN_WAIT_TIME;
+            }
+
+            // 使用字符率而不是词率来计算等待时间
+            if (_currentCharRate <= 0) return TimeSpan.FromSeconds(0.5);
+
+            // 动态基准值：慢速时使用较低的基准
+            double baselineRate = _currentCharRate < 5 ? 3.0 : 10.0;
+            double normalizedRate = Math.Min(_currentCharRate / baselineRate, 1.0);
+
+            // 使用指数函数使等待时间变化更平滑
+            double factor = Math.Exp(-normalizedRate);
+            double waitTime = MIN_WAIT_TIME.TotalSeconds + 
+                (MAX_WAIT_TIME.TotalSeconds - MIN_WAIT_TIME.TotalSeconds) * factor;
+
+            return TimeSpan.FromSeconds(Math.Min(waitTime, 1.5));
         }
 
         public void UpdateSpeechRate(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return;
 
-            var wordCount = text.Split(new[] { ' ', '\t', '\n', '\r' }, 
-                StringSplitOptions.RemoveEmptyEntries).Length;
             var now = DateTime.Now;
+            _lastActivityTime = now;
 
-            _speechRateWindow.Enqueue((now, wordCount));
+            var words = text.Split(new[] { ' ', '\t', '\n', '\r' }, 
+                StringSplitOptions.RemoveEmptyEntries);
+            var wordCount = words.Length;
+            var charCount = text.Count(c => !char.IsWhiteSpace(c));
+
+            _speechRateWindow.Enqueue((now, wordCount, charCount));
+
+            // 动态调整窗口大小
+            if (_currentCharRate > 0)
+            {
+                // 快速输入时增加窗口，慢速输入时减少窗口
+                if (_currentCharRate > 10 && _currentWindowSize < MAX_WINDOW_SIZE)
+                {
+                    _currentWindowSize++;
+                }
+                else if (_currentCharRate < 5 && _currentWindowSize > MIN_WINDOW_SIZE)
+                {
+                    _currentWindowSize--;
+                }
+            }
 
             // 维护滑动窗口
-            while (_speechRateWindow.Count > SPEECH_RATE_WINDOW_SIZE)
+            while (_speechRateWindow.Count > _currentWindowSize)
             {
                 _speechRateWindow.Dequeue();
             }
 
-            // 计算当前语速
+            // 计算当前速率
             if (_speechRateWindow.Count >= 2)
             {
                 var oldest = _speechRateWindow.Peek();
                 var totalWords = _speechRateWindow.Sum(x => x.wordCount);
+                var totalChars = _speechRateWindow.Sum(x => x.charCount);
                 var timeSpan = (now - oldest.timestamp).TotalSeconds;
-                _currentSpeechRate = totalWords / timeSpan;
+
+                if (timeSpan > 0)
+                {
+                    // 使用指数移动平均来平滑速率变化
+                    var newWordRate = totalWords / timeSpan;
+                    var newCharRate = totalChars / timeSpan;
+                    
+                    const double alpha = 0.3; // 平滑因子
+                    _currentSpeechRate = _currentSpeechRate * (1 - alpha) + newWordRate * alpha;
+                    _currentCharRate = _currentCharRate * (1 - alpha) + newCharRate * alpha;
+                }
             }
         }
 
