@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 using System.Linq;
+using System.Diagnostics;
 
 namespace LiveCaptionsTranslator.models.CaptionProcessing
 {
@@ -44,51 +45,66 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         /// <summary>
         /// 判断一个文本是否是一个完整的句子
         /// </summary>
-        public virtual bool IsCompleteSentence(string text)
+public virtual bool IsCompleteSentence(string text)
+{
+    if (string.IsNullOrWhiteSpace(text)) return false;
+
+    // 去除首尾空白
+    text = text.Trim();
+
+    // 检查是否以句子结束标点结尾
+    if (!SENTENCE_ENDINGS.Contains(text[^1])) return false;
+
+    // 检查是否是缩写词
+    foreach (var abbr in ABBREVIATIONS)
+    {
+        if (text.EndsWith(abbr, StringComparison.OrdinalIgnoreCase))
         {
-            if (string.IsNullOrWhiteSpace(text)) return false;
-
-            // 去除首尾空白
-            text = text.Trim();
-
-            // 检查是否以句子结束标点结尾
-            if (!SENTENCE_ENDINGS.Contains(text[^1])) return false;
-
-            // 检查是否是缩写词
-            foreach (var abbr in ABBREVIATIONS)
-            {
-                if (text.EndsWith(abbr, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
-            // 使用正则表达式进一步验证
-            return COMPLETE_SENTENCE_REGEX.IsMatch(text);
+            return false;
         }
+    }
+
+    // 使用正则表达式进一步验证
+    Stopwatch stopwatch = Stopwatch.StartNew();
+    bool isMatch = COMPLETE_SENTENCE_REGEX.IsMatch(text);
+    stopwatch.Stop();
+    Console.WriteLine($"IsCompleteSentence regex took {stopwatch.ElapsedMilliseconds} ms");
+
+    return isMatch;
+}
 
         /// <summary>
         /// 检查是否存在自然停顿点
         /// </summary>
-        public virtual bool HasNaturalPause(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return false;
+public virtual bool HasNaturalPause(string text)
+{
+    if (string.IsNullOrWhiteSpace(text)) return false;
             
-            // 检查标准的自然停顿
-            if (NATURAL_PAUSE_REGEX.IsMatch(text)) return true;
+    // 检查标准的自然停顿
+    Stopwatch stopwatch = Stopwatch.StartNew();
+    bool naturalPauseMatch = NATURAL_PAUSE_REGEX.IsMatch(text);
+    stopwatch.Stop();
+    Console.WriteLine($"NATURAL_PAUSE_REGEX took {stopwatch.ElapsedMilliseconds} ms");
+
+    if (naturalPauseMatch) return true;
             
-            // 检查语音停顿
-            if (SPEECH_PAUSE_REGEX.IsMatch(text)) return true;
+    // 检查语音停顿
+    stopwatch.Restart();
+    bool speechPauseMatch = SPEECH_PAUSE_REGEX.IsMatch(text);
+    stopwatch.Stop();
+    Console.WriteLine($"SPEECH_PAUSE_REGEX took {stopwatch.ElapsedMilliseconds} ms");
+
+    if (speechPauseMatch) return true;
             
-            // 检查时间累积
-            if (DateTime.Now - _lastSplitTime > MAX_ACCUMULATION_TIME)
-            {
-                _lastSplitTime = DateTime.Now;
-                return true;
-            }
+    // 检查时间累积
+    if (DateTime.Now - _lastSplitTime > MAX_ACCUMULATION_TIME)
+    {
+        _lastSplitTime = DateTime.Now;
+        return true;
+    }
             
-            return false;
-        }
+    return false;
+}
 
         /// <summary>
         /// 将文本拆分为完整句子

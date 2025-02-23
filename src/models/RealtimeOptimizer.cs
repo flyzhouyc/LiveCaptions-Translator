@@ -120,22 +120,25 @@ namespace LiveCaptionsTranslator.models
             }
         }
 
-        private float CalculateAdaptiveFactor()
-        {
-            if (_delayHistory.Count < 2) return 1.0f;
+private float CalculateAdaptiveFactor()
+{
+    if (_delayHistory.Count < 2) return 1.0f;
 
-            var recentDelays = _delayHistory.TakeLast(3).ToArray();
-            float avgDelay = (float)recentDelays.Average(x => x.delay);
-            float variance = (float)(recentDelays.Sum(x => Math.Pow(x.delay - avgDelay, 2)) / recentDelays.Length);
+    var recentDelays = _delayHistory.Skip(Math.Max(0, _delayHistory.Count - 3)).Take(3).ToArray();
+    float sum = 0;
+    float sumSquared = 0;
 
-            // 根据方差调整因子
-            float varianceFactor = Math.Min(1.0f, 10.0f / (float)(1 + Math.Sqrt(variance)));
+    foreach (var delay in recentDelays)
+    {
+        sum += delay.delay;
+        sumSquared += delay.delay * delay.delay;
+    }
 
-            // 考虑处理时间趋势
-            float trendFactor = _avgProcessingTime < 15 ? 0.9f : 1.1f;
+    float avgDelay = sum / recentDelays.Length;
+    float variance = (sumSquared / recentDelays.Length) - (avgDelay * avgDelay);
 
-            return varianceFactor * trendFactor;
-        }
+    return Math.Min(1.0f, 10.0f / (float)(1 + Math.Sqrt(variance)));
+}
 
         public async Task<string> GetCaptionTextAsync(AutomationElement? window)
         {
