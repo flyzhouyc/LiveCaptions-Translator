@@ -1,9 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Collections.Generic;
-using System.Linq;
-using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace LiveCaptionsTranslator.models.CaptionProcessing
 {
@@ -13,9 +14,9 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
         private static readonly char[] SENTENCE_ENDINGS = { '.', '!', '?' };
 
         // 常见缩写词列表
-        public static readonly HashSet<string> ABBREVIATIONS = new HashSet<string> 
-        { 
-            "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "Ltd.", "Co.", "Inc.", 
+        public static readonly HashSet<string> ABBREVIATIONS = new HashSet<string>
+        {
+            "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "Ltd.", "Co.", "Inc.",
             "St.", "Ave.", "Blvd.", "Rd.", "Ph.D.", "M.D.", "B.A.", "M.A.", "i.e.", "e.g.",
             "etc.", "vs.", "a.m.", "p.m.", "U.S.", "U.K.", "E.U."
         };
@@ -40,71 +41,72 @@ namespace LiveCaptionsTranslator.models.CaptionProcessing
 
         // 最大累积时间
         private static readonly TimeSpan MAX_ACCUMULATION_TIME = TimeSpan.FromSeconds(5);
+        private Stopwatch _stopwatch = Stopwatch.StartNew();
         private DateTime _lastSplitTime = DateTime.MinValue;
+
+        // 缓存正则表达式匹配结果
+        private Dictionary<string, bool> _regexCache = new Dictionary<string, bool>();
 
         /// <summary>
         /// 判断一个文本是否是一个完整的句子
         /// </summary>
-public virtual bool IsCompleteSentence(string text)
-{
-    if (string.IsNullOrWhiteSpace(text)) return false;
-
-    // 去除首尾空白
-    text = text.Trim();
-
-    // 检查是否以句子结束标点结尾
-    if (!SENTENCE_ENDINGS.Contains(text[^1])) return false;
-
-    // 检查是否是缩写词
-    foreach (var abbr in ABBREVIATIONS)
-    {
-        if (text.EndsWith(abbr, StringComparison.OrdinalIgnoreCase))
+        public virtual bool IsCompleteSentence(string text)
         {
-            return false;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+
+            // 去除首尾空白
+            text = text.Trim();
+
+            // 检查是否以句子结束标点结尾
+            if (!SENTENCE_ENDINGS.Contains(text[^1])) return false;
+
+            // 检查是否是缩写词
+            foreach (var abbr in ABBREVIATIONS)
+            {
+                if (text.EndsWith(abbr, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            // 使用缓存的正则表达式匹配结果
+            if (_regexCache.TryGetValue(text, out bool isMatch))
+            {
+                return isMatch;
+            }
+
+            // 使用正则表达式进一步验证
+            isMatch = COMPLETE_SENTENCE_REGEX.IsMatch(text);
+            _regexCache[text] = isMatch;
+
+            return isMatch;
         }
-    }
-
-    // 使用正则表达式进一步验证
-    Stopwatch stopwatch = Stopwatch.StartNew();
-    bool isMatch = COMPLETE_SENTENCE_REGEX.IsMatch(text);
-    stopwatch.Stop();
-    Console.WriteLine($"IsCompleteSentence regex took {stopwatch.ElapsedMilliseconds} ms");
-
-    return isMatch;
-}
 
         /// <summary>
         /// 检查是否存在自然停顿点
         /// </summary>
-public virtual bool HasNaturalPause(string text)
-{
-    if (string.IsNullOrWhiteSpace(text)) return false;
-            
-    // 检查标准的自然停顿
-    Stopwatch stopwatch = Stopwatch.StartNew();
-    bool naturalPauseMatch = NATURAL_PAUSE_REGEX.IsMatch(text);
-    stopwatch.Stop();
-    Console.WriteLine($"NATURAL_PAUSE_REGEX took {stopwatch.ElapsedMilliseconds} ms");
+        public virtual bool HasNaturalPause(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
 
-    if (naturalPauseMatch) return true;
-            
-    // 检查语音停顿
-    stopwatch.Restart();
-    bool speechPauseMatch = SPEECH_PAUSE_REGEX.IsMatch(text);
-    stopwatch.Stop();
-    Console.WriteLine($"SPEECH_PAUSE_REGEX took {stopwatch.ElapsedMilliseconds} ms");
+            // 检查标准的自然停顿
+            bool naturalPauseMatch = NATURAL_PAUSE_REGEX.IsMatch(text);
+            if (naturalPauseMatch) return true;
 
-    if (speechPauseMatch) return true;
-            
-    // 检查时间累积
-    if (DateTime.Now - _lastSplitTime > MAX_ACCUMULATION_TIME)
-    {
-        _lastSplitTime = DateTime.Now;
-        return true;
-    }
-            
-    return false;
-}
+            // 检查语音停顿
+            bool speechPauseMatch = SPEECH_PAUSE_REGEX.IsMatch(text);
+            if (speechPauseMatch) return true;
+
+            // 检查时间累积
+            if (_stopwatch.Elapsed > MAX_ACCUMULATION_TIME)
+            {
+                _stopwatch.Restart();
+                _lastSplitTime = DateTime.Now;
+                return true;
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// 将文本拆分为完整句子
@@ -117,7 +119,7 @@ public virtual bool HasNaturalPause(string text)
             var currentSentence = new StringBuilder();
             var words = text.Split(' ');
             var currentLength = 0;
-            var lastSplitTime = DateTime.Now;
+            var lastSplitTime = _stopwatch.Elapsed;
 
             foreach (var word in words)
             {
@@ -126,7 +128,7 @@ public virtual bool HasNaturalPause(string text)
                 currentLength += word.Length;
 
                 bool shouldSplit = false;
-                
+
                 // 检查完整句子
                 if (IsCompleteSentence(current))
                 {
@@ -136,11 +138,11 @@ public virtual bool HasNaturalPause(string text)
                 else if (HasNaturalPause(current))
                 {
                     // 慢速时降低长度要求
-                    int minLength = DateTime.Now.Subtract(lastSplitTime).TotalSeconds > 2 ? 20 : 40;
+                    int minLength = _stopwatch.Elapsed.TotalSeconds > 2 ? 20 : 40;
                     shouldSplit = currentLength >= minLength;
                 }
                 // 检查时间累积
-                else if (DateTime.Now - lastSplitTime > MAX_ACCUMULATION_TIME && currentLength > 10)
+                else if (_stopwatch.Elapsed > MAX_ACCUMULATION_TIME && currentLength > 10)
                 {
                     shouldSplit = true;
                 }
@@ -150,8 +152,8 @@ public virtual bool HasNaturalPause(string text)
                     sentences.Add(current);
                     currentSentence.Clear();
                     currentLength = 0;
-                    lastSplitTime = DateTime.Now;
-                    _lastSplitTime = lastSplitTime;
+                    lastSplitTime = _stopwatch.Elapsed;
+                    _stopwatch.Restart();
                 }
             }
 
@@ -188,7 +190,7 @@ public virtual bool HasNaturalPause(string text)
             }
 
             // 检查是否形成完整句子或达到自然停顿点
-            if (IsCompleteSentence(combinedText) || 
+            if (IsCompleteSentence(combinedText) ||
                 (HasNaturalPause(combinedText) && combinedText.Length > 50))
             {
                 return combinedText;
