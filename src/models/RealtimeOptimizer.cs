@@ -28,8 +28,8 @@ namespace LiveCaptionsTranslator.models
         private readonly SentenceProcessor _sentenceProcessor;
         
         // 自适应延迟
-        private readonly Queue<(DateTime time, int delay)> _delayHistory = new(20);
-        private float _avgProcessingTime = 10;
+        private readonly Queue<(DateTime time, int delay)> _delayHistory = new(30);
+        private float _avgProcessingTime = 15;
         private readonly object _delayLock = new();
         
         // 性能监控
@@ -130,7 +130,7 @@ namespace LiveCaptionsTranslator.models
 
             // 根据方差调整因子
             float varianceFactor = Math.Min(1.0f, 10.0f / (float)(1 + Math.Sqrt(variance)));
-            
+
             // 考虑处理时间趋势
             float trendFactor = _avgProcessingTime < 15 ? 0.9f : 1.1f;
 

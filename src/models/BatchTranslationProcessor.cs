@@ -27,24 +27,24 @@ namespace LiveCaptionsTranslator.models
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly Task _processingTask;
         private readonly Func<string, Task<string>> _translateFunc;
-        private readonly int _maxBatchSize;
-        private readonly TimeSpan _maxWaitTime;
-        private readonly SemaphoreSlim _queueSemaphore;
-        private readonly int _maxConcurrentBatches;
+        private readonly int _maxBatchSize = 15;
+        private readonly TimeSpan _maxWaitTime = TimeSpan.FromMilliseconds(200);
+        private readonly SemaphoreSlim _queueSemaphore = new SemaphoreSlim(10);
+        private readonly int _maxConcurrentBatches = 10;
         private volatile bool _isDisposed;
 
         public BatchTranslationProcessor(
             Func<string, Task<string>> translateFunc,
-            int maxBatchSize = 5,
-            int maxWaitMilliseconds = 500,
-            int maxConcurrentBatches = 3)
+            int maxBatchSize = 15,
+            int maxWaitMilliseconds = 200,
+            int maxConcurrentBatches = 10)
         {
             _queue = new ConcurrentPriorityQueue<TranslationRequest>();
             _cancellationTokenSource = new CancellationTokenSource();
             _translateFunc = translateFunc;
-            _maxBatchSize = 10;
-            _maxWaitTime = TimeSpan.FromMilliseconds(300);
-            _maxConcurrentBatches = 5;
+            _maxBatchSize = maxBatchSize;
+            _maxWaitTime = TimeSpan.FromMilliseconds(maxWaitMilliseconds);
+            _maxConcurrentBatches = maxConcurrentBatches;
             _queueSemaphore = new SemaphoreSlim(maxConcurrentBatches);
             _processingTask = ProcessQueueAsync(_cancellationTokenSource.Token);
         }
@@ -66,14 +66,14 @@ namespace LiveCaptionsTranslator.models
                 try
                 {
                     await _queueSemaphore.WaitAsync(cancellationToken);
-                    
+
                     try
                     {
                         var batch = new List<TranslationRequest>();
                         var waitStartTime = DateTime.Now;
 
                         // 收集批处理项
-                        while (batch.Count < _maxBatchSize && 
+                        while (batch.Count < _maxBatchSize &&
                                DateTime.Now - waitStartTime < _maxWaitTime &&
                                !cancellationToken.IsCancellationRequested)
                         {

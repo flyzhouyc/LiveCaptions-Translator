@@ -37,7 +37,7 @@ namespace LiveCaptionsTranslator.models
             _batchProcessor = new BatchTranslationProcessor(
                 async (text) =>
                 {
-                    const int maxAttempts = 3;
+                    const int maxAttempts = 5; // 增加重试次数
                     Exception lastException = null;
 
                     for (int attempt = 0; attempt < maxAttempts; attempt++)
@@ -61,9 +61,9 @@ namespace LiveCaptionsTranslator.models
 
                     return $"[Translation Failed] {lastException?.Message}";
                 },
-                maxBatchSize: 5,
-                maxWaitMilliseconds: 500,
-                maxConcurrentBatches: Environment.ProcessorCount * 2
+                maxBatchSize: 10, // 增加批处理大小
+                maxWaitMilliseconds: 300, // 减少等待时间
+                maxConcurrentBatches: Environment.ProcessorCount * 4 // 增加并发数
             );
         }
 

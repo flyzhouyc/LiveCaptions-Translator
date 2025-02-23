@@ -38,8 +38,8 @@ namespace LiveCaptionsTranslator.models
         private readonly ConcurrentDictionary<string, PersistentCacheEntry> _memoryCache;
         private readonly SemaphoreSlim _dbLock = new(1);
         private readonly Timer _persistTimer;
-        private const int MAX_MEMORY_CACHE_SIZE = 1000;
-        private const int CLEANUP_THRESHOLD = 800;
+        private const int MAX_MEMORY_CACHE_SIZE = 1500;
+        private const int CLEANUP_THRESHOLD = 1200;
         private DateTime _lastCleanup = DateTime.Now;
 
         public PersistentCache(string dbPath = "translation_cache.db")
