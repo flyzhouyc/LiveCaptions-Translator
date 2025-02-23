@@ -10,17 +10,15 @@ namespace LiveCaptionsTranslator.models
     {
         private static readonly PersistentCache _cache = new();
         private static readonly BatchTranslationProcessor _batchProcessor;
-        private static readonly HttpClient client = new HttpClient() 
-        { 
+        private static readonly HttpClient client = new HttpClient()
+        {
             Timeout = TimeSpan.FromSeconds(5),  // 减少超时时间
             DefaultRequestHeaders = { ConnectionClose = false }  // 保持连接
         };
-        private static readonly Dictionary<string, (int failures, DateTime lastFailure)> _apiHealthStatus = 
-            new Dictionary<string, (int failures, DateTime lastFailure)>();
+        private static readonly Dictionary<string, (int failures, DateTime lastFailure, DateTime cooldownUntil)> _apiHealthStatus =
+            new Dictionary<string, (int failures, DateTime lastFailure, DateTime cooldownUntil)>();
         private static int _currentAPIIndex = 0;
         private static readonly string[] _apiPriority = new[] { "OpenAI", "Ollama", "GoogleTranslate" };
-        
-
 
         public static readonly Dictionary<string, Func<string, Task<string>>> TRANSLATE_FUNCS = new()
         {
@@ -52,7 +50,7 @@ namespace LiveCaptionsTranslator.models
                         {
                             lastException = ex;
                             SwitchToNextAPI();
-                            
+
                             if (attempt < maxAttempts - 1)
                             {
                                 await Task.Delay(500 * (attempt + 1)); // 指数退避
@@ -87,6 +85,7 @@ namespace LiveCaptionsTranslator.models
         {
             _currentAPIIndex = (_currentAPIIndex + 1) % _apiPriority.Length;
             App.Settings.ApiName = _apiPriority[_currentAPIIndex];
+            _apiHealthStatus[App.Settings.ApiName] = (0, DateTime.MinValue, DateTime.Now.AddMinutes(5)); // Add cooldown period
         }
 
         private static Func<string, Task<string>> GetSelectedTranslateMethod()
@@ -193,7 +192,7 @@ namespace LiveCaptionsTranslator.models
                 return $"[Translation Failed] {ex.Message}";
             }
         }
-        
+
         private static async Task<string> GoogleTranslate(string text)
         {
             var config = App.Settings?.CurrentAPIConfig as GoogleTranslateConfig;

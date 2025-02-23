@@ -14,27 +14,27 @@ namespace LiveCaptionsTranslator.models
         private int _sameTextCount = 0;
         private AutomationElement? _cachedElement;
         private DateTime _lastElementAccess;
-        private readonly TimeSpan _elementCacheTimeout = TimeSpan.FromMilliseconds(50); // 减少缓存超时
+        private readonly TimeSpan _elementCacheTimeout = TimeSpan.FromMilliseconds(30); // 减少缓存超时
         
         // 预测性缓存
         private readonly Dictionary<string, AutomationElement> _elementCache = new(3);
         private DateTime _lastPredictiveUpdate = DateTime.MinValue;
-        private readonly TimeSpan _predictiveUpdateInterval = TimeSpan.FromMilliseconds(200);
+        private readonly TimeSpan _predictiveUpdateInterval = TimeSpan.FromMilliseconds(150);
         
         // 翻译优化
-        private readonly Queue<string> _textBuffer = new(5); // 增加缓冲区大小
+        private readonly Queue<string> _textBuffer = new(10); // 增加缓冲区大小
         private float _lastConfidence = 0;
         private readonly Dictionary<string, float> _patterns = new();
         private readonly SentenceProcessor _sentenceProcessor;
         
         // 自适应延迟
-        private readonly Queue<(DateTime time, int delay)> _delayHistory = new(10);
+        private readonly Queue<(DateTime time, int delay)> _delayHistory = new(20);
         private float _avgProcessingTime = 10;
         private readonly object _delayLock = new();
         
         // 性能监控
         private readonly Stopwatch _perfWatch = new();
-        private readonly Queue<int> _delayStats = new(100);
+        private readonly Queue<int> _delayStats = new(200);
         private readonly object _statsLock = new();
 
         public RealtimeOptimizer()

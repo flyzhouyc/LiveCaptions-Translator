@@ -42,9 +42,9 @@ namespace LiveCaptionsTranslator.models
             _queue = new ConcurrentPriorityQueue<TranslationRequest>();
             _cancellationTokenSource = new CancellationTokenSource();
             _translateFunc = translateFunc;
-            _maxBatchSize = maxBatchSize;
-            _maxWaitTime = TimeSpan.FromMilliseconds(maxWaitMilliseconds);
-            _maxConcurrentBatches = maxConcurrentBatches;
+            _maxBatchSize = 10;
+            _maxWaitTime = TimeSpan.FromMilliseconds(300);
+            _maxConcurrentBatches = 5;
             _queueSemaphore = new SemaphoreSlim(maxConcurrentBatches);
             _processingTask = ProcessQueueAsync(_cancellationTokenSource.Token);
         }
