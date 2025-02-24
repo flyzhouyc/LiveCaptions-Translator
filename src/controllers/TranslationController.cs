@@ -13,13 +13,15 @@ namespace LiveCaptionsTranslator.controllers
 
         public static event Action? TranslationLogged;
 
-        private readonly SentenceProcessor _sentenceProcessor;
-        private bool _isInitialized = false;
+private readonly SentenceProcessor _sentenceProcessor;
+private readonly PersistentCache _cache;
+private bool _isInitialized = false;
 
-        public TranslationController()
-        {
-            _sentenceProcessor = new SentenceProcessor();
-        }
+public TranslationController(string cacheFilePath)
+{
+    _sentenceProcessor = new SentenceProcessor();
+    _cache = new PersistentCache(cacheFilePath);
+}
 
         private Task InitializeAsync()
         {
@@ -44,7 +46,12 @@ namespace LiveCaptionsTranslator.controllers
             int minTranslationLength = App.Settings.MinTranslationLength;
 
             // 尝试累积句子
-            string? completeSentence = _sentenceProcessor.AccumulateSentence(_accumulatedSentence ?? "", text, MAX_SENTENCE_LENGTH);
+string? completeSentence = _sentenceProcessor.AccumulateSentence(_accumulatedSentence ?? "", text, MAX_SENTENCE_LENGTH);
+if (completeSentence == null && _accumulatedSentence != null)
+{
+    // Check if the accumulated sentence can form a complete sentence with the new text
+    completeSentence = _sentenceProcessor.AccumulateSentence("", _accumulatedSentence + " " + text, MAX_SENTENCE_LENGTH);
+}
 
             // 如果没有完整句子，更新累积句子
             if (completeSentence == null)
@@ -79,7 +86,13 @@ namespace LiveCaptionsTranslator.controllers
             try
             {
                 // 直接使用翻译API
-                string translatedText = await TranslateAPI.TranslateFunc(completeSentence);
+if (_cache.TryGetCachedTranslation(completeSentence, out string cachedTranslation))
+{
+    return cachedTranslation;
+}
+
+string translatedText = await TranslateAPI.TranslateFunc(completeSentence);
+_cache.AddToCache(completeSentence, translatedText);
                 
                 if (!string.IsNullOrEmpty(translatedText))
                 {

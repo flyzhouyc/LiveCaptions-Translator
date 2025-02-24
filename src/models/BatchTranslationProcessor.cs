@@ -27,11 +27,35 @@ namespace LiveCaptionsTranslator.models
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly Task _processingTask;
         private readonly Func<string, Task<string>> _translateFunc;
-        private readonly int _maxBatchSize = 15;
-        private readonly TimeSpan _maxWaitTime = TimeSpan.FromMilliseconds(200);
-        private readonly SemaphoreSlim _queueSemaphore = new SemaphoreSlim(10);
-        private readonly int _maxConcurrentBatches = 10;
-        private volatile bool _isDisposed;
+private int _maxBatchSize = 15;
+private readonly TimeSpan _maxWaitTime = TimeSpan.FromMilliseconds(200);
+private readonly SemaphoreSlim _queueSemaphore = new SemaphoreSlim(10);
+private readonly int _maxConcurrentBatches = 10;
+private volatile bool _isDisposed;
+private readonly ConcurrentBag<long> _responseTimes = new ConcurrentBag<long>();
+private const int ResponseTimeWindow = 10;
+private const double TargetAverageResponseTime = 200; // in milliseconds
+
+private void AdjustBatchSize()
+{
+    if (_responseTimes.Count < ResponseTimeWindow)
+    {
+        return;
+    }
+
+    double averageResponseTime = _responseTimes.Average(time => (double)time);
+    if (averageResponseTime > TargetAverageResponseTime && _maxBatchSize > 1)
+    {
+        _maxBatchSize--;
+    }
+    else if (averageResponseTime < TargetAverageResponseTime)
+    {
+        _maxBatchSize++;
+    }
+
+    // Clear the response times window
+    _responseTimes.Clear();
+}
 
         public BatchTranslationProcessor(
             Func<string, Task<string>> translateFunc,
@@ -115,43 +139,47 @@ namespace LiveCaptionsTranslator.models
             }
         }
 
-        private async Task ProcessBatchAsync(List<TranslationRequest> batch)
+private async Task ProcessBatchAsync(List<TranslationRequest> batch)
+{
+    try
+    {
+        // 按优先级和时间戳排序
+        batch.Sort((a, b) =>
+        {
+            var priorityComparison = b.Priority.CompareTo(a.Priority);
+            return priorityComparison != 0
+                ? priorityComparison
+                : a.Timestamp.CompareTo(b.Timestamp);
+        });
+
+        // 并行处理批次中的请求
+        var tasks = batch.Select(async request =>
         {
             try
             {
-                // 按优先级和时间戳排序
-                batch.Sort((a, b) =>
-                {
-                    var priorityComparison = b.Priority.CompareTo(a.Priority);
-                    return priorityComparison != 0
-                        ? priorityComparison
-                        : a.Timestamp.CompareTo(b.Timestamp);
-                });
-
-                // 并行处理批次中的请求
-                var tasks = batch.Select(async request =>
-                {
-                    try
-                    {
-                        var result = await _translateFunc(request.Text);
-                        request.CompletionSource.TrySetResult(result);
-                    }
-                    catch (Exception ex)
-                    {
-                        request.CompletionSource.TrySetException(ex);
-                    }
-                });
-
-                await Task.WhenAll(tasks);
+var stopwatch = Stopwatch.StartNew();
+var result = await _translateFunc(request.Text);
+stopwatch.Stop();
+_responseTimes.Add(stopwatch.ElapsedMilliseconds);
+AdjustBatchSize();
+                request.CompletionSource.TrySetResult(result);
             }
             catch (Exception ex)
             {
-                foreach (var request in batch)
-                {
-                    request.CompletionSource.TrySetException(ex);
-                }
+                request.CompletionSource.TrySetException(ex);
             }
+        });
+
+        await Task.WhenAll(tasks);
+    }
+    catch (Exception ex)
+    {
+        foreach (var request in batch)
+        {
+            request.CompletionSource.TrySetException(ex);
         }
+    }
+}
 
         public async ValueTask DisposeAsync()
         {
