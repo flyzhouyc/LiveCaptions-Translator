@@ -8,7 +8,7 @@ namespace LiveCaptionsTranslator.models
 {
     public static class TranslateAPI
     {
-        private static readonly PersistentCache _cache = new();
+private static readonly PersistentCache _cache = new PersistentCache("path/to/cache/file.json");
         private static readonly BatchTranslationProcessor _batchProcessor;
         private static readonly HttpClient client = new HttpClient()
         {
@@ -67,10 +67,6 @@ namespace LiveCaptionsTranslator.models
             );
         }
 
-        public static async Task<string> TranslateWithCacheAsync(string text)
-        {
-            return await _batchProcessor.EnqueueTranslationAsync(text);
-        }
 
         public static async Task DisposeAsync()
         {
