@@ -86,6 +86,40 @@
                         Value="{Binding MaxSyncInterval, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
             </StackPanel>
+
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="2.5,0,0,5" Text="Stability Threshold" />
+                    <ui:Flyout x:Name="StabilityInfoFlyout">
+                        <TextBlock Width="320" TextWrapping="Wrap">
+                            <Run Text="Determines how many checks the text must remain unchanged before it's considered 'stable' for translation." />
+                            <Run Text="&#x0A;Lower values make translations quicker but may translate incomplete sentences." />
+                            <Run Text="&#x0A;Higher values ensure more complete sentences but with more delay." />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="StabilityButton_MouseEnter"
+                        MouseLeave="StabilityButton_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Slider
+                        Width="140"
+                        Margin="0,0,5,0"
+                        AutoToolTipPlacement="TopLeft"
+                        AutoToolTipPrecision="0"
+                        Maximum="20"
+                        Minimum="1"
+                        Value="{Binding MinStabilityCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Vertical">

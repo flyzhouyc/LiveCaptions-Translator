@@ -20,6 +20,7 @@ namespace LiveCaptionsTranslator.models
 
         private int maxIdleInterval = 20;
         private int maxSyncInterval = 5;
+        private int minStabilityCount = 3; // 新增的稳定性阈值属性
 
         private Dictionary<string, string> windowBounds;
         private bool topmost = true;
@@ -67,6 +68,15 @@ namespace LiveCaptionsTranslator.models
             {
                 maxSyncInterval = value;
                 OnPropertyChanged("MaxSyncInterval");
+            }
+        }
+        public int MinStabilityCount
+        {
+            get => minStabilityCount;
+            set
+            {
+                minStabilityCount = value;
+                OnPropertyChanged("MinStabilityCount");
             }
         }
         public string Prompt

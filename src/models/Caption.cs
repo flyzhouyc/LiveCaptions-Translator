@@ -29,8 +29,7 @@ namespace LiveCaptionsTranslator.models
         private bool hasUnprocessedSentence = false;
         // 稳定性计数器(句子保持不变的次数)
         private int stabilityCounter = 0;
-        // 句子需要保持稳定的最小计数
-        private const int MIN_STABILITY_COUNT = 3;
+        // 句子需要保持稳定的最小计数 - 已删除常量定义，改用Settings中的属性
 
         public bool TranslateFlag { get; set; } = false;
         public bool LogOnlyFlag { get; set; } = false;
@@ -122,7 +121,7 @@ namespace LiveCaptionsTranslator.models
                     stabilityCounter++;
                     
                     // 检查句子是否已经稳定了足够的时间
-                    if (stabilityCounter >= MIN_STABILITY_COUNT)
+                    if (stabilityCounter >= App.Settings?.MinStabilityCount)
                     {
                         // 判断是否有新的完整句子需要翻译
                         if (isSentenceComplete && currentSentence != lastCompleteSentence)

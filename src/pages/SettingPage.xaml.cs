@@ -91,6 +91,16 @@ namespace LiveCaptionsTranslator
         {
             FrequencyInfoFlyout.Hide();
         }
+        
+        private void StabilityButton_MouseEnter(object sender, MouseEventArgs e)
+        {
+            StabilityInfoFlyout.Show();
+        }
+
+        private void StabilityButton_MouseLeave(object sender, MouseEventArgs e)
+        {
+            StabilityInfoFlyout.Hide();
+        }
 
         private void LoadAPISetting()
         {
