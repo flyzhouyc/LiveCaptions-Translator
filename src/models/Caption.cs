@@ -16,20 +16,22 @@ namespace LiveCaptionsTranslator.models
         private static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
         private static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
 
+        // 事件监听相关
+        private AutomationPropertyChangedEventHandler? textChangeHandler;
+        private AutomationElement? captionsTextBlock;
+        
+        // 句子处理相关变量
         private string displayOriginalCaption = "";
         private string displayTranslatedCaption = "";
-
-        // 存储正在构建的句子
-        private string currentSentenceBuilder = "";
-        // 上次翻译的完整句子
-        private string lastCompleteSentence = "";
-        // 句子是否已完成的标志
-        private bool isSentenceComplete = false;
-        // 是否存在未翻译的完整句子
-        private bool hasUnprocessedSentence = false;
-        // 稳定性计数器(句子保持不变的次数)
-        private int stabilityCounter = 0;
-        // 句子需要保持稳定的最小计数 - 已删除常量定义，改用Settings中的属性
+        private string currentSentenceBuilder = "";  // 存储正在构建的句子
+        private string lastCompleteSentence = "";    // 上次翻译的完整句子
+        private bool isSentenceComplete = false;     // 句子是否已完成的标志
+        private bool hasUnprocessedSentence = false; // 是否存在未翻译的完整句子
+        private int stabilityCounter = 0;            // 稳定性计数器(句子保持不变的次数)
+        
+        // 用于备份检查的字段
+        private string lastProcessedText = "";
+        private System.Timers.Timer backupTimer;
 
         public bool TranslateFlag { get; set; } = false;
         public bool LogOnlyFlag { get; set; } = false;
@@ -55,7 +57,14 @@ namespace LiveCaptionsTranslator.models
             }
         }
 
-        private Caption() { }
+        private Caption() 
+        {
+            // 创建备份检查计时器，以防事件监听失效
+            backupTimer = new System.Timers.Timer(1000); // 每秒检查一次
+            backupTimer.Elapsed += (s, e) => CheckForMissedUpdates();
+            backupTimer.AutoReset = true;
+            backupTimer.Start();
+        }
 
         public static Caption GetInstance()
         {
@@ -70,93 +79,213 @@ namespace LiveCaptionsTranslator.models
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
         }
 
-        public void Sync()
+        /// <summary>
+        /// 设置UI自动化事件监听，替代原有的轮询方式
+        /// </summary>
+        public void StartListening()
         {
-            int idleCount = 0;
+            if (App.Window == null)
+            {
+                Task.Run(() => TrySetupListener());
+                return;
+            }
 
+            SetupAutomationEventListener(App.Window);
+        }
+
+        /// <summary>
+        /// 尝试设置监听器，直到LiveCaptions窗口可用
+        /// </summary>
+        private async Task TrySetupListener()
+        {
             while (true)
             {
-                if (App.Window == null)
+                if (App.Window != null)
                 {
-                    Thread.Sleep(2000);
-                    continue;
+                    SetupAutomationEventListener(App.Window);
+                    break;
                 }
-
-                // 获取 LiveCaptions 识别的文本
-                string fullText = string.Empty;
-                try
-                {
-                    fullText = GetCaptions(App.Window);
-                }
-                catch (ElementNotAvailableException ex)
-                {
-                    App.Window = null;
-                    continue;
-                }
-                if (string.IsNullOrEmpty(fullText))
-                    continue;
-
-                // 文本预处理
-                fullText = PreprocessText(fullText);
-
-                // 提取最后一个完整句子或正在进行的句子
-                string currentSentence = ExtractCurrentSentence(fullText);
-
-                // 更新显示的原始字幕
-                UpdateDisplayCaption(currentSentence, fullText);
-
-                // 判断句子是否发生变化
-                if (currentSentence != currentSentenceBuilder)
-                {
-                    // 句子有变化，重置稳定性计数器
-                    stabilityCounter = 0;
-                    currentSentenceBuilder = currentSentence;
-                    
-                    // 判断句子是否完整
-                    isSentenceComplete = IsSentenceComplete(currentSentence);
-                }
-                else
-                {
-                    // 句子保持不变，增加稳定性计数
-                    stabilityCounter++;
-                    
-                    // 检查句子是否已经稳定了足够的时间
-                    if (stabilityCounter >= App.Settings?.MinStabilityCount)
-                    {
-                        // 判断是否有新的完整句子需要翻译
-                        if (isSentenceComplete && currentSentence != lastCompleteSentence)
-                        {
-                            // 如果有一个新的完整句子，标记为未处理并准备翻译
-                            OriginalCaption = currentSentence;
-                            lastCompleteSentence = currentSentence;
-                            hasUnprocessedSentence = true;
-                            TranslateFlag = true;
-                            stabilityCounter = 0; // 重置稳定性计数器
-                        }
-                        // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
-                        else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
-                                 Encoding.UTF8.GetByteCount(currentSentence) >= 15)
-                        {
-                            OriginalCaption = currentSentence;
-                            TranslateFlag = true;
-                            stabilityCounter = 0; // 重置稳定性计数器
-                        }
-                    }
-                }
-
-                // 如果闲置时间过长，也触发翻译
-                idleCount++;
-                if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence))
-                {
-                    OriginalCaption = currentSentence;
-                    TranslateFlag = true;
-                    idleCount = 0;
-                }
-
-                Thread.Sleep(25);
+                await Task.Delay(1000);
             }
         }
 
+        /// <summary>
+        /// 设置UI自动化事件监听器
+        /// </summary>
+        private void SetupAutomationEventListener(AutomationElement window)
+        {
+            try
+            {
+                // 清除现有的事件处理器
+                CleanupEventListener();
+
+                // 查找字幕文本块
+                captionsTextBlock = LiveCaptionsHandler.FindElementByAId(window, "CaptionsTextBlock");
+                if (captionsTextBlock == null)
+                {
+                    Console.WriteLine("无法找到字幕文本块，将退回到备份检查机制");
+                    return;
+                }
+
+                // 创建并注册事件处理器
+                textChangeHandler = new AutomationPropertyChangedEventHandler(OnCaptionTextChanged);
+                Automation.AddAutomationPropertyChangedEventHandler(
+                    captionsTextBlock,
+                    TreeScope.Element,
+                    textChangeHandler,
+                    AutomationElement.NameProperty);
+
+                Console.WriteLine("成功设置字幕变化事件监听器");
+                
+                // 初始处理现有文本
+                string initialText = captionsTextBlock.Current.Name;
+                if (!string.IsNullOrEmpty(initialText))
+                {
+                    ProcessCaptionText(initialText);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"设置事件监听器时出错: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 移除事件监听器，避免内存泄漏
+        /// </summary>
+        private void CleanupEventListener()
+        {
+            if (captionsTextBlock != null && textChangeHandler != null)
+            {
+                try
+                {
+                    Automation.RemoveAutomationPropertyChangedEventHandler(
+                        captionsTextBlock,
+                        textChangeHandler);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"移除事件监听器时出错: {ex.Message}");
+                }
+                textChangeHandler = null;
+            }
+        }
+
+        /// <summary>
+        /// 字幕文本改变事件处理函数
+        /// </summary>
+        private void OnCaptionTextChanged(object sender, AutomationPropertyChangedEventArgs e)
+        {
+            try
+            {
+                var element = sender as AutomationElement;
+                if (element == null) return;
+
+                string newText = element.Current.Name;
+                if (string.IsNullOrEmpty(newText)) return;
+
+                // 更新上次处理的文本，用于备份检查
+                lastProcessedText = newText;
+                
+                // 处理捕获到的文本
+                ProcessCaptionText(newText);
+            }
+            catch (ElementNotAvailableException)
+            {
+                // 元素不可用，可能需要重新设置监听器
+                App.Window = null;
+                Task.Run(() => TrySetupListener());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"处理字幕文本变化事件时出错: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 备份检查，防止事件监听失败或丢失
+        /// </summary>
+        private void CheckForMissedUpdates()
+        {
+            try
+            {
+                if (App.Window == null || captionsTextBlock == null)
+                {
+                    Task.Run(() => TrySetupListener());
+                    return;
+                }
+
+                string currentText = captionsTextBlock.Current.Name;
+                
+                // 如果当前文本与上次处理的不同，说明可能漏掉了事件
+                if (currentText != lastProcessedText)
+                {
+                    lastProcessedText = currentText;
+                    ProcessCaptionText(currentText);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"备份检查时出错: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 处理字幕文本，替代原轮询中的处理逻辑
+        /// </summary>
+        private void ProcessCaptionText(string fullText)
+        {
+            // 文本预处理
+            fullText = PreprocessText(fullText);
+
+            // 提取最后一个完整句子或正在进行的句子
+            string currentSentence = ExtractCurrentSentence(fullText);
+
+            // 更新显示的原始字幕
+            UpdateDisplayCaption(currentSentence, fullText);
+
+            // 判断句子是否发生变化
+            if (currentSentence != currentSentenceBuilder)
+            {
+                // 句子有变化，重置稳定性计数器
+                stabilityCounter = 0;
+                currentSentenceBuilder = currentSentence;
+                
+                // 判断句子是否完整
+                isSentenceComplete = IsSentenceComplete(currentSentence);
+            }
+            else
+            {
+                // 句子保持不变，增加稳定性计数
+                stabilityCounter++;
+                
+                // 检查句子是否已经稳定了足够的时间
+                if (stabilityCounter >= App.Settings?.MinStabilityCount)
+                {
+                    // 判断是否有新的完整句子需要翻译
+                    if (isSentenceComplete && currentSentence != lastCompleteSentence)
+                    {
+                        // 如果有一个新的完整句子，标记为未处理并准备翻译
+                        OriginalCaption = currentSentence;
+                        lastCompleteSentence = currentSentence;
+                        hasUnprocessedSentence = true;
+                        TranslateFlag = true;
+                        stabilityCounter = 0; // 重置稳定性计数器
+                    }
+                    // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
+                    else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
+                             Encoding.UTF8.GetByteCount(currentSentence) >= 15)
+                    {
+                        OriginalCaption = currentSentence;
+                        TranslateFlag = true;
+                        stabilityCounter = 0; // 重置稳定性计数器
+                    }
+                }
+            }
+        }
+
+        // 以下方法与原代码相同，只是移除了轮询循环
+        
         // 文本预处理
         private string PreprocessText(string text)
         {
@@ -230,6 +359,7 @@ namespace LiveCaptionsTranslator.models
                 {
                     DisplayTranslatedCaption = "[WARNING] LiveCaptions was unexpectedly closed, restarting...";
                     App.Window = LiveCaptionsHandler.LaunchLiveCaptions();
+                    StartListening(); // 重新设置事件监听
                     DisplayTranslatedCaption = "";
                 } 
                 else if (LogOnlyFlag)
@@ -286,11 +416,11 @@ namespace LiveCaptionsTranslator.models
                     if (isSentenceComplete && hasUnprocessedSentence)
                     {
                         hasUnprocessedSentence = false;
-                        Thread.Sleep(150); // 完整句子之后短暂暂停以提供更好的阅读体验
+                        await Task.Delay(150); // 完整句子之后短暂暂停以提供更好的阅读体验
                     }
                 }
                 
-                Thread.Sleep(25);
+                await Task.Delay(25); // 保持适当的循环间隔
             }
         }
 

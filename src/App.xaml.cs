@@ -37,7 +37,10 @@ namespace LiveCaptionsTranslator
             captions = Caption.GetInstance();
             settings = Setting.Load();
 
-            Task.Run(() => Captions?.Sync());
+            // 修改: 使用事件监听代替轮询同步
+            captions.StartListening();
+            
+            // 仍然需要翻译线程
             Task.Run(() => Captions?.Translate());
         }
 
