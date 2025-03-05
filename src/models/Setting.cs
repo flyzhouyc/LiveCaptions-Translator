@@ -19,7 +19,7 @@ namespace LiveCaptionsTranslator.models
         private string prompt;
 
         private int maxIdleInterval = 20;
-        private int maxSyncInterval = 3;
+        private int maxSyncInterval = 5;
 
         private Dictionary<string, string> windowBounds;
         private bool topmost = true;
