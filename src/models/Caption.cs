@@ -146,60 +146,75 @@ namespace LiveCaptionsTranslator.models
         }
 
         public async Task Translate()
+{
+    var translationTaskQueue = new TranslationTaskQueue();
+    while (true)
+    {
+        if (App.Window == null)
         {
-            var translationTaskQueue = new TranslationTaskQueue();
-            while (true)
+            DisplayTranslatedCaption = "[WARNING] LiveCaptions was unexpectedly closed, restarting...";
+            App.Window = LiveCaptionsHandler.LaunchLiveCaptions();
+            DisplayTranslatedCaption = "";
+        } 
+        else if (LogOnlyFlag)
+        {
+            TranslatedCaption = string.Empty;
+            DisplayTranslatedCaption = "[Paused]";
+        } 
+        else if (!string.IsNullOrEmpty(translationTaskQueue.Output))
+        {
+            // 获取主要翻译结果
+            TranslatedCaption = translationTaskQueue.Output;
+            DisplayTranslatedCaption = ShortenDisplaySentence(TranslatedCaption, 200);
+        }
+        else
+        {
+            // 如果当前没有可用翻译，尝试获取备选翻译结果
+            string backupResult = translationTaskQueue.GetLatestAvailableResult();
+            if (!string.IsNullOrEmpty(backupResult))
             {
-                if (App.Window == null)
-                {
-                    DisplayTranslatedCaption = "[WARNING] LiveCaptions was unexpectedly closed, restarting...";
-                    App.Window = LiveCaptionsHandler.LaunchLiveCaptions();
-                    DisplayTranslatedCaption = "";
-                } else if (LogOnlyFlag)
-                {
-                    TranslatedCaption = string.Empty;
-                    DisplayTranslatedCaption = "[Paused]";
-                } else if (!string.IsNullOrEmpty(translationTaskQueue.Output))
-                {
-                    TranslatedCaption = translationTaskQueue.Output;
-                    DisplayTranslatedCaption = ShortenDisplaySentence(TranslatedCaption, 200);
-                }
-
-                if (TranslateFlag)
-                {
-                    var originalSnapshot = OriginalCaption;
-
-                    // If the old sentence is the prefix of the new sentence,
-                    // overwrite the previous entry when logging.
-                    string lastLoggedOriginal = await SQLiteHistoryLogger.LoadLatestSourceText();
-                    bool isOverWrite = !string.IsNullOrEmpty(lastLoggedOriginal)
-                        && originalSnapshot.StartsWith(lastLoggedOriginal);
-
-                    if (LogOnlyFlag)
-                    {
-                        var LogOnlyTask = Task.Run(
-                            () => Translator.LogOnly(originalSnapshot, isOverWrite)
-                        );
-                    }
-                    else
-                    {
-                        translationTaskQueue.Enqueue(token => Task.Run(() =>
-                        {
-                            var TranslateTask = Translator.Translate(OriginalCaption, token);
-                            var LogTask = Translator.Log(
-                                originalSnapshot, TranslateTask.Result, App.Settings, isOverWrite, token);
-                            return TranslateTask;
-                        }));
-                    }
-
-                    TranslateFlag = false;
-                    // If the original sentence is a complete sentence, pause for better visual experience.
-                    if (Array.IndexOf(PUNC_EOS, originalSnapshot[^1]) != -1)
-                        Thread.Sleep(600);
-                }
-                Thread.Sleep(40);
+                TranslatedCaption = backupResult;
+                DisplayTranslatedCaption = ShortenDisplaySentence(TranslatedCaption, 200);
             }
         }
+
+        if (TranslateFlag)
+        {
+            var originalSnapshot = OriginalCaption;
+
+            // If the old sentence is the prefix of the new sentence,
+            // overwrite the previous entry when logging.
+            string lastLoggedOriginal = await SQLiteHistoryLogger.LoadLatestSourceText();
+            bool isOverWrite = !string.IsNullOrEmpty(lastLoggedOriginal)
+                && originalSnapshot.StartsWith(lastLoggedOriginal);
+
+            if (LogOnlyFlag)
+            {
+                var LogOnlyTask = Task.Run(
+                    () => Translator.LogOnly(originalSnapshot, isOverWrite)
+                );
+            }
+            else
+            {
+                translationTaskQueue.Enqueue(token => Task.Run(() =>
+                {
+                    var TranslateTask = Translator.Translate(OriginalCaption, token);
+                    var LogTask = Translator.Log(
+                        originalSnapshot, TranslateTask.Result, App.Settings, isOverWrite, token);
+                    return TranslateTask;
+                }));
+            }
+
+            TranslateFlag = false;
+            // 减少完整句子的等待时间，从600ms降低到300ms，保持一定的视觉体验
+            if (Array.IndexOf(PUNC_EOS, originalSnapshot[^1]) != -1)
+                Thread.Sleep(200); // 原来是600ms
+        }
+        
+        // 减少循环间隔，更快地响应新的字幕变化
+        Thread.Sleep(25); // 原来是40ms
+    }
+}
 
         public static string GetCaptions(AutomationElement window)
         {
