@@ -1,12 +1,16 @@
-﻿using LiveCaptionsTranslator.models;
-using System.Windows;
+﻿using System.Windows;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
+
+using LiveCaptionsTranslator.utils;
 
 namespace LiveCaptionsTranslator
 {
     public partial class MainWindow : FluentWindow
     {
+        public SubtitleWindow? SubtitleWindow { get; set; } = null;
+
+
         public MainWindow()
         {
             InitializeComponent();
@@ -21,40 +25,86 @@ namespace LiveCaptionsTranslator
                 );
             };
             Loaded += (sender, args) => RootNavigation.Navigate(typeof(CaptionPage));
+
+            var windowState = WindowHandler.LoadState(this, App.Settings);
+            WindowHandler.RestoreState(this, windowState);
+            ToggleTopmost(App.Settings.TopMost);
         }
 
-        void TopmostButton_Click(object sender, RoutedEventArgs e)
+        private void TopmostButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleTopmost(!Topmost);
+        }
+
+        private void OverlaySubtitleModeButton_Click(object sender, RoutedEventArgs e)
         {
             var button = sender as Button;
             var symbolIcon = button?.Icon as SymbolIcon;
-            if (Topmost)
+
+            if (SubtitleWindow == null)
             {
-                Topmost = false;
+                // Caption + Translation
+                symbolIcon.Symbol = SymbolRegular.TextUnderlineDouble20;
+
+                SubtitleWindow = new SubtitleWindow();
+                SubtitleWindow.SizeChanged +=
+                    (s, e) => WindowHandler.SaveState(SubtitleWindow, App.Settings);
+                SubtitleWindow.LocationChanged +=
+                    (s, e) => WindowHandler.SaveState(SubtitleWindow, App.Settings);
+
+                var windowState = WindowHandler.LoadState(SubtitleWindow, App.Settings);
+                WindowHandler.RestoreState(SubtitleWindow, windowState);
+                SubtitleWindow.Show();
+            }
+            else if (!SubtitleWindow.IsTranslationOnly)
+            {
+                // Translation Only
+                symbolIcon.Symbol = SymbolRegular.TextAddSpaceBefore20;
+
+                SubtitleWindow.IsTranslationOnly = true;
+                SubtitleWindow.Focus();
+            }
+            else
+            {
+                // Closed
+                symbolIcon.Symbol = SymbolRegular.WindowNew20;
+
+                SubtitleWindow.IsTranslationOnly = false;
+                SubtitleWindow.Close();
+                SubtitleWindow = null;
+            }
+        }
+
+        private void LogOnly_OnClickButton_Click(object sender, RoutedEventArgs e)
+        {
+            var button = sender as Button;
+            var symbolIcon = button?.Icon as SymbolIcon;
+
+            if (App.Captions.LogOnlyFlag)
+            {
+                App.Captions.LogOnlyFlag = false;
                 symbolIcon.Filled = false;
             }
             else
             {
-                Topmost = true;
+                App.Captions.LogOnlyFlag = true;
                 symbolIcon.Filled = true;
             }
         }
 
-        void PauseButton_Click(object sender, RoutedEventArgs e)
+        private void MainWindow_BoundsChanged(object sender, EventArgs e)
         {
-            var button = sender as Button;
+            var window = sender as Window;
+            WindowHandler.SaveState(window, App.Settings);
+        }
+
+        private void ToggleTopmost(bool enable)
+        {
+            var button = topmost as Button;
             var symbolIcon = button?.Icon as SymbolIcon;
-            if (App.Captions.PauseFlag)
-            {
-                if (App.Window == null)
-                    App.Window = LiveCaptionsHandler.LaunchLiveCaptions();
-                App.Captions.PauseFlag = false;
-                symbolIcon.Filled = false;
-            }
-            else
-            {
-                App.Captions.PauseFlag = true;
-                symbolIcon.Filled = true;
-            }
+            Topmost = enable;
+            symbolIcon.Filled = enable;
+            App.Settings.TopMost = enable;
         }
     }
 }

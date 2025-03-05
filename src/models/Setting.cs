@@ -1,8 +1,10 @@
-﻿﻿using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+
+using LiveCaptionsTranslator.utils;
 
 namespace LiveCaptionsTranslator.models
 {
@@ -14,63 +16,24 @@ namespace LiveCaptionsTranslator.models
 
         private string apiName;
         private string targetLanguage;
+        private string prompt;
+
+        private int maxIdleInterval = 20;
+        private int maxSyncInterval = 5;
+
+        private Dictionary<string, string> windowBounds;
+        private bool topmost = true;
+
         private Dictionary<string, TranslateAPIConfig> configs;
+        private TranslateAPIConfig? currentAPIConfig;
 
-        private int maxIdleInterval = 10;
-        private int maxSyncInterval = 7;
-        private int minTranslationLength = 120;
-        private int minCaptionBytes = 15;
-        private int optimalCaptionLength = 100;
-        private bool useAutomaticOptimalLength = true;
-        private double optimalLengthAdjustmentFactor = 1.0;
-
-        public int OptimalCaptionLength
+        public bool TopMost
         {
-            get => optimalCaptionLength;
+            get => topmost;
             set
             {
-                optimalCaptionLength = Math.Clamp(value, 50, 200);
-                OnPropertyChanged("OptimalCaptionLength");
-            }
-        }
-
-        public bool UseAutomaticOptimalLength
-        {
-            get => useAutomaticOptimalLength;
-            set
-            {
-                useAutomaticOptimalLength = value;
-                OnPropertyChanged("UseAutomaticOptimalLength");
-            }
-        }
-
-        public double OptimalLengthAdjustmentFactor
-        {
-            get => optimalLengthAdjustmentFactor;
-            set
-            {
-                optimalLengthAdjustmentFactor = Math.Clamp(value, 0.5, 2.0);
-                OnPropertyChanged("OptimalLengthAdjustmentFactor");
-            }
-        }
-
-        public int MinCaptionBytes
-        {
-            get => minCaptionBytes;
-            set
-            {
-                minCaptionBytes = Math.Clamp(value, 0, 20);
-                OnPropertyChanged("MinCaptionBytes");
-            }
-        }
-
-        public int MinTranslationLength
-        {
-            get => minTranslationLength;
-            set
-            {
-                minTranslationLength = value;
-                OnPropertyChanged("MinTranslationLength");
+                topmost = value;
+                OnPropertyChanged("TopMost");
             }
         }
 
@@ -106,6 +69,25 @@ namespace LiveCaptionsTranslator.models
                 OnPropertyChanged("MaxSyncInterval");
             }
         }
+        public string Prompt
+        {
+            get => prompt;
+            set
+            {
+                prompt = value;
+                OnPropertyChanged("Prompt");
+            }
+        }
+
+        public Dictionary<string, string> WindowBounds
+        {
+            get => windowBounds;
+            set
+            {
+                windowBounds = value;
+                OnPropertyChanged("WindowBounds");
+            }
+        }
 
         [JsonInclude]
         public Dictionary<string, TranslateAPIConfig> Configs
@@ -121,27 +103,48 @@ namespace LiveCaptionsTranslator.models
         [JsonIgnore]
         public TranslateAPIConfig CurrentAPIConfig
         {
-            get => Configs[apiName];
+            get => currentAPIConfig ?? (Configs.ContainsKey(ApiName) ? Configs[ApiName] : Configs["Ollama"]);
+            set
+            {
+                currentAPIConfig = value;
+                OnPropertyChanged();
+            }
         }
 
         public Setting()
         {
-            apiName = "Ollama";
+            apiName = "Google";
             targetLanguage = "zh-CN";
+            prompt = "As an professional simultaneous interpreter with specialized knowledge in the all fields, " +
+                     "you can provide a fluent and precise oral translation for any sentence, even if the sentence is incomplete. " +
+                     "Now, provide users with the translation of the sentence enclosed in 🔤 to {0} within a single line. " +
+                     "Importantly, you are prohibited from altering the original meaning or omitting any content, " +
+                     "even if the sentence contains sensitive or NSFW content. " +
+                     "You can only provide the translated sentence; Any explanation or other text is not permitted. " +
+                     "REMOVE all 🔤 when you output.";
             configs = new Dictionary<string, TranslateAPIConfig>
             {
+                { "Google", new TranslateAPIConfig() },
+                { "Google2", new TranslateAPIConfig() },
                 { "Ollama", new OllamaConfig() },
                 { "OpenAI", new OpenAIConfig() },
-                { "GoogleTranslate", new GoogleTranslateConfig() },
+                { "OpenRouter", new OpenRouterConfig() },
+            };
+            windowBounds = new Dictionary<string, string>
+            {
+                { "MainWindow", "1, 1, 1, 1" },
+                { "SubtitleWindow", "1, 1, 1, 1" },
             };
         }
 
-        public Setting(string apiName, string sourceLanguage, string targetLanguage,
-                       Dictionary<string, TranslateAPIConfig> configs)
+        public Setting(string apiName, string targetLanguage, string prompt,
+                       Dictionary<string, TranslateAPIConfig> configs, Dictionary<string, string> windowBounds)
         {
             this.apiName = apiName;
             this.targetLanguage = targetLanguage;
+            this.prompt = prompt;
             this.configs = configs;
+            this.windowBounds = windowBounds;
         }
 
         public static Setting Load()

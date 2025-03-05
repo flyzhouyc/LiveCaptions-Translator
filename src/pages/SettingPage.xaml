@@ -1,0 +1,327 @@
+﻿<Page
+    x:Class="LiveCaptionsTranslator.SettingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:LiveCaptionsTranslator"
+    xmlns:localModel="clr-namespace:LiveCaptionsTranslator.models"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="SettingPage"
+    JournalEntry.KeepAlive="False"
+    mc:Ignorable="d">
+
+    <Grid x:Name="PageGrid" Margin="15,15,15,15">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0" Orientation="Vertical">
+            <StackPanel Margin="15,0,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="2.5,0,0,5" Text="LiveCaptions" />
+                    <ui:Flyout x:Name="LiveCaptionsInfoFlyout">
+                        <TextBlock Width="320" TextWrapping="Wrap">
+                            <Run Text="After Windows 11 version 24H2, you can only change the" />
+                            <Run FontWeight="Bold" Text="source language" />
+                            <Run Text="in LiveCaptions" />
+                            <Run Text="&#x0A;Note: Please click" />
+                            <Run FontWeight="Bold" Text="&quot;Hide&quot;" />
+                            <Run Text="to hide LiveCaptions instead of closing it directly." />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="LiveCaptionsButton_MouseEnter"
+                        MouseLeave="LiveCaptionsButton_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <ui:Button
+                    Width="145"
+                    Height="30"
+                    Padding="11,4,11,4"
+                    Click="Button_LiveCaptions">
+                    <TextBlock x:Name="ButtonText" Text="Show" />
+                </ui:Button>
+            </StackPanel>
+
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="2.5,0,0,5" Text="API Interval" />
+                    <ui:Flyout x:Name="FrequencyInfoFlyout">
+                        <TextBlock Width="320" TextWrapping="Wrap">
+                            <Run Text="Determines the frequency of translate API calls. The smaller it is, the more frequent API calls." />
+                            <Run Text="&#x0A;The translate API is called once after the caption changes" />
+                            <Run FontWeight="SemiBold" Text="[API Interval]" />
+                            <Run Text="times" />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="FrequencyButton_MouseEnter"
+                        MouseLeave="FrequencyButton_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Slider
+                        Width="140"
+                        Margin="0,0,5,0"
+                        AutoToolTipPlacement="TopLeft"
+                        AutoToolTipPrecision="0"
+                        Maximum="20"
+                        Value="{Binding MaxSyncInterval, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Vertical">
+            <StackPanel Margin="15,0,0,0" Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Translate API" />
+                <ComboBox
+                    x:Name="translateAPIBox"
+                    Width="150"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    SelectedItem="{Binding ApiName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    SelectionChanged="translateAPIBox_SelectionChanged" />
+            </StackPanel>
+
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock
+                        Margin="2.5,0,0,5"
+                        VerticalAlignment="Center"
+                        Text="Target Language" />
+                    <ui:Flyout x:Name="TargetLangInfoFlyout">
+                        <TextBlock Width="300" TextWrapping="Wrap">
+                            <Run Text="You can directly edit to customize the language, and it is recommended to follow the" />
+                            <Run FontWeight="Bold" Text="BCP 47 language tag" />
+                            <Run Text="&#x0A;Note: Google translate might be failed to run if don't use BCP 47 language tag" />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="TargetLangButton_MouseEnter"
+                        MouseLeave="TargetLangButton_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <ComboBox
+                    x:Name="targetLangBox"
+                    Width="150"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    IsEditable="True" />
+            </StackPanel>
+        </StackPanel>
+
+        <Grid x:Name="OpenAIGrid" Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="0"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
+                <ui:TextBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="1"
+                Grid.Column="0"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Temperature" />
+                <ui:NumberBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    ClearButtonEnabled="False"
+                    FontSize="13.3"
+                    LargeChange="1"
+                    Maximum="2"
+                    Minimum="0"
+                    SmallChange="0.1"
+                    Value="{Binding CurrentAPIConfig.Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="1"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="API Url" />
+                <ui:TextBox
+                    Width="185"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ApiUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="1"
+                Grid.Column="1"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="API Key" />
+                <ui:TextBox
+                    Width="185"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid x:Name="OllamaGrid" Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="0"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
+                <ui:TextBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="1"
+                Grid.Column="0"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Temperature" />
+                <ui:NumberBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    ClearButtonEnabled="False"
+                    FontSize="13.3"
+                    LargeChange="1"
+                    Maximum="2"
+                    Minimum="0"
+                    SmallChange="0.1"
+                    Value="{Binding CurrentAPIConfig.Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="1"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Port" />
+                <ui:NumberBox
+                    Width="140"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    ClearButtonEnabled="False"
+                    FontSize="13.3"
+                    Maximum="65535"
+                    Minimum="1"
+                    SpinButtonPlacementMode="Hidden"
+                    Value="{Binding CurrentAPIConfig.Port, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid x:Name="OpenRouterGrid" Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="0"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Model Name" />
+                <ui:TextBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    Cursor=""
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="1"
+                Grid.Column="0"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Temperature" />
+                <ui:NumberBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    ClearButtonEnabled="False"
+                    FontSize="13.3"
+                    LargeChange="1"
+                    Maximum="2"
+                    Minimum="0"
+                    SmallChange="0.1"
+                    Value="{Binding CurrentAPIConfig.Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="1"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="API Key" />
+                <ui:TextBox
+                    Width="185"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+
+            <Grid x:Name="NoSettingGrid" Grid.Column="2" />
+        </Grid>
+    </Grid>
+</Page>

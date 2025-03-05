@@ -4,9 +4,24 @@ using System.Text.Json.Serialization;
 
 namespace LiveCaptionsTranslator.models
 {
-    public abstract class TranslateAPIConfig : INotifyPropertyChanged
+    public class TranslateAPIConfig : INotifyPropertyChanged
     {
-        [JsonIgnore] public abstract Dictionary<string, string> SupportedLanguages { get; }
+        protected static readonly Dictionary<string, string> SUPPORTED_LANGUAGES = new()
+        {
+            { "zh-CN", "zh-CN" },
+            { "zh-TW", "zh-TW" },
+            { "en-US", "en-US" },
+            { "en-GB", "en-GB" },
+            { "ja-JP", "ja-JP" },
+            { "ko-KR", "ko-KR" },
+            { "fr-FR", "fr-FR" },
+            { "th-TH", "th-TH" },
+        };
+        [JsonIgnore]
+        public Dictionary<string, string> SupportedLanguages
+        {
+            get => SUPPORTED_LANGUAGES;
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -17,9 +32,15 @@ namespace LiveCaptionsTranslator.models
         }
     }
 
-    public class OllamaConfig : TranslateAPIConfig
+    public class BaseLLMConfig : TranslateAPIConfig
     {
-        public static readonly Dictionary<string, string> SUPPORTED_LANGUAGES = new()
+        public class Message
+        {
+            public string role { get; set; }
+            public string content { get; set; }
+        }
+
+        protected static new readonly Dictionary<string, string> SUPPORTED_LANGUAGES = new()
         {
             { "zh-CN", "Simplified Chinese" },
             { "zh-TW", "Traditional Chinese" },
@@ -27,21 +48,35 @@ namespace LiveCaptionsTranslator.models
             { "en-GB", "British English" },
             { "ja-JP", "Japanese" },
             { "ko-KR", "Korean" },
-            { "fr-FR", "French" }
+            { "fr-FR", "French" },
+            { "th-TH", "Thai" },
         };
 
-        [JsonIgnore]
-        public override Dictionary<string, string> SupportedLanguages
-        {
-            get => SUPPORTED_LANGUAGES;
-        }
+        private string modelName = "";
+        private double temperature = 1.0;
 
-        public class Message
+        public string ModelName
         {
-            public string role { get; set; }
-            public string content { get; set; }
+            get => modelName;
+            set
+            {
+                modelName = value;
+                OnPropertyChanged("ModelName");
+            }
         }
+        public double Temperature
+        {
+            get => temperature;
+            set
+            {
+                temperature = value;
+                OnPropertyChanged("Temperature");
+            }
+        }
+    }
 
+    public class OllamaConfig : BaseLLMConfig
+    {
         public class Response
         {
             public string model { get; set; }
@@ -56,31 +91,20 @@ namespace LiveCaptionsTranslator.models
             public long eval_duration { get; set; }
         }
 
-        private string modelName = "";
-        private double temperature = 1.0;
+        private int port = 11434;
 
-        public string ModelName
+        public int Port
         {
-            get => modelName;
+            get => port;
             set
             {
-                modelName = value;
-                OnPropertyChanged("ModelName");
-            }
-        }
-
-        public double Temperature
-        {
-            get => temperature;
-            set
-            {
-                temperature = value;
-                OnPropertyChanged("Temperature");
+                port = value;
+                OnPropertyChanged("Port");
             }
         }
     }
 
-    public class OpenAIConfig : OllamaConfig
+    public class OpenAIConfig : BaseLLMConfig
     {
         public class Choice
         {
@@ -131,21 +155,17 @@ namespace LiveCaptionsTranslator.models
         }
     }
 
-    public class GoogleTranslateConfig : TranslateAPIConfig
+    public class OpenRouterConfig : BaseLLMConfig
     {
-        private static readonly Dictionary<string, string> SUPPORTED_LANGUAGES = new()
+        private string apiKey = "";
+        public string ApiKey
         {
-            { "zh-CN", "Simplified Chinese" },
-            { "zh-TW", "Traditional Chinese" },
-            { "en-US", "American English" },
-            { "en-GB", "British English" },
-            { "ja-JP", "Japanese" },
-            { "ko-KR", "Korean" },
-            { "fr-FR", "French" }
-        };
-
-        [JsonIgnore]
-        public override Dictionary<string, string> SupportedLanguages => SUPPORTED_LANGUAGES;
-        
+            get => apiKey;
+            set
+            {
+                apiKey = value;
+                OnPropertyChanged();
+            }
+        }
     }
 }

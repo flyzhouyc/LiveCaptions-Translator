@@ -9,9 +9,13 @@
     Title="LiveCaptionsTranslator"
     Width="750"
     Height="167"
+    MinWidth="750"
+    MinHeight="167"
     Background="Transparent"
     ExtendsContentIntoTitleBar="True"
+    LocationChanged="MainWindow_BoundsChanged"
     ResizeMode="CanResizeWithGrip"
+    SizeChanged="MainWindow_BoundsChanged"
     Topmost="True"
     WindowBackdropType="Mica"
     WindowStartupLocation="Manual"
@@ -19,67 +23,89 @@
     mc:Ignorable="d">
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+        <Grid x:Name="MainContent">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-        <ui:TitleBar
-            Title="LiveCaptionsTranslator"
-            Grid.Row="0"
-            Height="27"
-            ShowMaximize="False">
-            <ui:TitleBar.Header>
-                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                    <ui:Button
-                        x:Name="pause"
-                        Margin="0,0,5,0"
-                        Appearance="Transparent"
-                        Click="PauseButton_Click"
-                        Icon="{ui:SymbolIcon Pause24,
-                                             Filled=False}" />
-                    <ui:Button
-                        x:Name="topmost"
-                        Margin="0,0,5,0"
-                        Appearance="Transparent"
-                        Click="TopmostButton_Click"
-                        Icon="{ui:SymbolIcon Pin24,
-                                             Filled=True}" />
-                </StackPanel>
-            </ui:TitleBar.Header>
-        </ui:TitleBar>
+            <ui:TitleBar
+                Grid.Row="0"
+                Height="27"
+                ShowMaximize="False">
+                <ui:TitleBar.Header>
+                    <ui:TextBlock Padding="15,0,0,0" VerticalAlignment="Center">LiveCaptions Translator</ui:TextBlock>
+                </ui:TitleBar.Header>
+                <ui:TitleBar.TrailingContent>
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                        <ui:Button
+                            x:Name="logOnly"
+                            Margin="0,0,5,0"
+                            Appearance="Transparent"
+                            Click="LogOnly_OnClickButton_Click"
+                            Icon="{ui:SymbolIcon Pause16,
+                                                 Filled=False}"
+                            ToolTip="Pause Translation" />
+                        <ui:Button
+                            x:Name="overlaySubtitleMode"
+                            Margin="0,0,5,0"
+                            Appearance="Transparent"
+                            Click="OverlaySubtitleModeButton_Click"
+                            Icon="{ui:SymbolIcon WindowNew20,
+                                                 Filled=False}"
+                            ToolTip="Overlay Translate Mode" />
+                        <ui:Button
+                            x:Name="topmost"
+                            Margin="0,0,5,0"
+                            Appearance="Transparent"
+                            Click="TopmostButton_Click"
+                            Icon="{ui:SymbolIcon Pin16,
+                                                 Filled=True}"
+                            ToolTip="Always On Top" />
+                    </StackPanel>
+                </ui:TitleBar.TrailingContent>
+            </ui:TitleBar>
 
-        <ui:NavigationView
-            x:Name="RootNavigation"
-            Grid.Row="1"
-            Height="Auto"
-            HeaderVisibility="Collapsed"
-            IsBackButtonVisible="Collapsed"
-            IsPaneToggleVisible="False"
-            PaneDisplayMode="LeftFluent">
-            <ui:NavigationView.MenuItems>
-                <ui:NavigationViewItem
-                    Margin="0,6,0,3"
-                    Content="Caption"
-                    FontFamily="Bahnschrift"
-                    Icon="{ui:SymbolIcon Home24}"   
-                    NavigationCacheMode="Enabled"
-                    TargetPageType="{x:Type local:CaptionPage}" />
-                <ui:NavigationViewItem
-                    Margin="0,3,0,0"
-                    Content="History"
-                    FontFamily="Bahnschrift"
-                    Icon="{ui:SymbolIcon History24}"
-                    NavigationCacheMode="Enabled"
-                    TargetPageType="{x:Type local:HistoryPage}" />
-                <ui:NavigationViewItem
-                    Margin="0,3,0,0"
-                    Content="Setting"
-                    FontFamily="Bahnschrift"
-                    Icon="{ui:SymbolIcon Settings24}"
-                    NavigationCacheMode="Enabled"
-                    TargetPageType="{x:Type local:SettingPage}" />
-            </ui:NavigationView.MenuItems>
-        </ui:NavigationView>
+            <ui:NavigationView
+                x:Name="RootNavigation"
+                Grid.Row="1"
+                Height="Auto"
+                HeaderVisibility="Collapsed"
+                IsBackButtonVisible="Collapsed"
+                IsPaneToggleVisible="False"
+                PaneDisplayMode="LeftFluent">
+                <ui:NavigationView.MenuItems>
+                    <ui:NavigationViewItem
+                        Margin="0,6,0,3"
+                        Content="Caption"
+                        FontFamily="Bahnschrift"
+                        Icon="{ui:SymbolIcon Home24}"
+                        NavigationCacheMode="Enabled"
+                        TargetPageType="{x:Type local:CaptionPage}" />
+                    <ui:NavigationViewItem
+                        Margin="0,3,0,0"
+                        Content="Setting"
+                        FontFamily="Bahnschrift"
+                        Icon="{ui:SymbolIcon Settings24}"
+                        NavigationCacheMode="Required"
+                        TargetPageType="{x:Type local:SettingPage}" />
+                    <ui:NavigationViewItem
+                        Margin="0,3,0,0"
+                        Content="Prompt"
+                        FontFamily="Bahnschrift"
+                        Icon="{ui:SymbolIcon Chat24}"
+                        NavigationCacheMode="Required"
+                        TargetPageType="{x:Type local:PromptSetting}" Cursor="" />
+                    <ui:NavigationViewItem
+                        Margin="0,3,0,0"
+                        Content="History"
+                        FontFamily="Bahnschrift"
+                        Icon="{ui:SymbolIcon History24}"
+                        NavigationCacheMode="Disabled"
+                        TargetPageType="{x:Type local:HistoryPage}" />
+                </ui:NavigationView.MenuItems>
+            </ui:NavigationView>
+        </Grid>
+        <ContentPresenter x:Name="DialogHostContainer" MinHeight="175" />
     </Grid>
 </ui:FluentWindow>
