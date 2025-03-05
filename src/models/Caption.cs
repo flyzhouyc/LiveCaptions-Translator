@@ -153,7 +153,7 @@ namespace LiveCaptionsTranslator.models
                     idleCount = 0;
                 }
 
-                Thread.Sleep(25);
+                Thread.Sleep(15);
             }
         }
 
