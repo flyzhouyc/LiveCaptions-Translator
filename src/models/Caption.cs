@@ -179,11 +179,21 @@ namespace LiveCaptionsTranslator.models
             try
             {
                 var element = sender as AutomationElement;
-                if (element == null) return;
+                if (element == null)
+                {
+                    Console.WriteLine("OnCaptionTextChanged: element 为空");
+                    return;
+                }
 
                 string newText = element.Current.Name;
-                if (string.IsNullOrEmpty(newText)) return;
+                if (string.IsNullOrEmpty(newText))
+                {
+                    Console.WriteLine("OnCaptionTextChanged: 获取到的文本为空");
+                    return;
+                }
 
+                Console.WriteLine($"字幕变化: {newText}");
+                
                 // 更新上次处理的文本，用于备份检查
                 lastProcessedText = newText;
                 
@@ -192,6 +202,7 @@ namespace LiveCaptionsTranslator.models
             }
             catch (ElementNotAvailableException)
             {
+                Console.WriteLine("OnCaptionTextChanged: 元素不可用，重新设置监听器");
                 // 元素不可用，可能需要重新设置监听器
                 App.Window = null;
                 Task.Run(() => TrySetupListener());
@@ -211,6 +222,7 @@ namespace LiveCaptionsTranslator.models
             {
                 if (App.Window == null || captionsTextBlock == null)
                 {
+                    Console.WriteLine("备份检查: 窗口或字幕文本块为空，重新设置事件监听");
                     Task.Run(() => TrySetupListener());
                     return;
                 }
@@ -220,6 +232,7 @@ namespace LiveCaptionsTranslator.models
                 // 如果当前文本与上次处理的不同，说明可能漏掉了事件
                 if (currentText != lastProcessedText)
                 {
+                    Console.WriteLine($"备份检查: 检测到未处理的字幕变化: {currentText}");
                     lastProcessedText = currentText;
                     ProcessCaptionText(currentText);
                 }
@@ -235,56 +248,212 @@ namespace LiveCaptionsTranslator.models
         /// </summary>
         private void ProcessCaptionText(string fullText)
         {
-            // 文本预处理
-            fullText = PreprocessText(fullText);
-
-            // 提取最后一个完整句子或正在进行的句子
-            string currentSentence = ExtractCurrentSentence(fullText);
-
-            // 更新显示的原始字幕
-            UpdateDisplayCaption(currentSentence, fullText);
-
-            // 判断句子是否发生变化
-            if (currentSentence != currentSentenceBuilder)
+            try
             {
-                // 句子有变化，重置稳定性计数器
-                stabilityCounter = 0;
-                currentSentenceBuilder = currentSentence;
-                
-                // 判断句子是否完整
-                isSentenceComplete = IsSentenceComplete(currentSentence);
-            }
-            else
-            {
-                // 句子保持不变，增加稳定性计数
-                stabilityCounter++;
-                
-                // 检查句子是否已经稳定了足够的时间
-                if (stabilityCounter >= App.Settings?.MinStabilityCount)
+                // 文本预处理
+                fullText = PreprocessText(fullText);
+                Console.WriteLine($"预处理后文本: {fullText}");
+
+                // 提取最后一个完整句子或正在进行的句子
+                string currentSentence = ExtractCurrentSentence(fullText);
+                Console.WriteLine($"提取的当前句子: {currentSentence}");
+
+                // 更新显示的原始字幕
+                UpdateDisplayCaption(currentSentence, fullText);
+
+                // 判断句子是否发生变化
+                if (currentSentence != currentSentenceBuilder)
                 {
-                    // 判断是否有新的完整句子需要翻译
-                    if (isSentenceComplete && currentSentence != lastCompleteSentence)
+                    // 句子有变化，重置稳定性计数器
+                    Console.WriteLine($"句子变化: 从 '{currentSentenceBuilder}' 到 '{currentSentence}'");
+                    stabilityCounter = 0;
+                    currentSentenceBuilder = currentSentence;
+                    
+                    // 判断句子是否完整
+                    isSentenceComplete = IsSentenceComplete(currentSentence);
+                    Console.WriteLine($"句子完整性: {isSentenceComplete}");
+                }
+                else
+                {
+                    // 句子保持不变，增加稳定性计数
+                    stabilityCounter++;
+                    Console.WriteLine($"句子稳定次数: {stabilityCounter}, 门槛: {App.Settings?.MinStabilityCount}, 是否完整: {isSentenceComplete}");
+                    
+                    // 检查句子是否已经稳定了足够的时间
+                    if (stabilityCounter >= App.Settings?.MinStabilityCount)
                     {
-                        // 如果有一个新的完整句子，标记为未处理并准备翻译
-                        OriginalCaption = currentSentence;
-                        lastCompleteSentence = currentSentence;
-                        hasUnprocessedSentence = true;
-                        TranslateFlag = true;
-                        stabilityCounter = 0; // 重置稳定性计数器
-                    }
-                    // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
-                    else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
-                             Encoding.UTF8.GetByteCount(currentSentence) >= 15)
-                    {
-                        OriginalCaption = currentSentence;
-                        TranslateFlag = true;
-                        stabilityCounter = 0; // 重置稳定性计数器
+                        // 判断是否有新的完整句子需要翻译
+                        if (isSentenceComplete && currentSentence != lastCompleteSentence)
+                        {
+                            Console.WriteLine($"触发完整句子翻译: {currentSentence}");
+                            // 如果有一个新的完整句子，标记为未处理并准备翻译
+                            OriginalCaption = currentSentence;
+                            lastCompleteSentence = currentSentence;
+                            hasUnprocessedSentence = true;
+                            TranslateFlag = true;
+                            stabilityCounter = 0; // 重置稳定性计数器
+                        }
+                        // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
+                        else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
+                                 Encoding.UTF8.GetByteCount(currentSentence) >= 15)
+                        {
+                            Console.WriteLine($"触发不完整但稳定句子翻译: {currentSentence}");
+                            OriginalCaption = currentSentence;
+                            TranslateFlag = true;
+                            stabilityCounter = 0; // 重置稳定性计数器
+                        }
                     }
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"处理字幕文本时出错: {ex.Message}");
+            }
         }
 
-        // 以下方法与原代码相同，只是移除了轮询循环
+        public async Task Translate()
+        {
+            var translationTaskQueue = new TranslationTaskQueue();
+            while (true)
+            {
+                if (App.Window == null)
+                {
+                    DisplayTranslatedCaption = "[WARNING] LiveCaptions was unexpectedly closed, restarting...";
+                    App.Window = LiveCaptionsHandler.LaunchLiveCaptions();
+                    StartListening(); // 重新设置事件监听
+                    DisplayTranslatedCaption = "";
+                } 
+                else if (LogOnlyFlag)
+                {
+                    TranslatedCaption = string.Empty;
+                    DisplayTranslatedCaption = "[Paused]";
+                } 
+                else if (!string.IsNullOrEmpty(translationTaskQueue.Output))
+                {
+                    // 获取主要翻译结果
+                    TranslatedCaption = translationTaskQueue.Output;
+                    DisplayTranslatedCaption = ShortenDisplaySentence(TranslatedCaption, 200);
+                    
+                    // 添加调试信息
+                    Console.WriteLine($"显示翻译结果: {TranslatedCaption}");
+                }
+                else
+                {
+                    // 如果当前没有可用翻译，尝试获取备选翻译结果
+                    string backupResult = translationTaskQueue.GetLatestAvailableResult();
+                    if (!string.IsNullOrEmpty(backupResult))
+                    {
+                        TranslatedCaption = backupResult;
+                        DisplayTranslatedCaption = ShortenDisplaySentence(TranslatedCaption, 200);
+                        
+                        // 添加调试信息
+                        Console.WriteLine($"显示备选翻译结果: {TranslatedCaption}");
+                    }
+                }
+
+                if (TranslateFlag)
+                {
+                    var originalSnapshot = OriginalCaption;
+                    Console.WriteLine($"处理翻译请求: {originalSnapshot}");
+
+                    // 如果旧句子是新句子的前缀，记录日志时覆盖之前的条目
+                    string lastLoggedOriginal = await SQLiteHistoryLogger.LoadLatestSourceText();
+                    bool isOverWrite = !string.IsNullOrEmpty(lastLoggedOriginal) 
+                        && originalSnapshot.StartsWith(lastLoggedOriginal);
+
+                    if (LogOnlyFlag)
+                    {
+                        try
+                        {
+                            await Translator.LogOnly(originalSnapshot, isOverWrite);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"记录日志异常: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        // 修改: 改进翻译任务的创建方式
+                        translationTaskQueue.Enqueue(async (token) => 
+                        {
+                            try 
+                            {
+                                // 直接等待翻译完成，避免使用.Result
+                                string translatedText = await Translator.Translate(originalSnapshot, token);
+                                
+                                // 记录翻译结果
+                                Console.WriteLine($"翻译完成: '{originalSnapshot}' => '{translatedText}'");
+                                
+                                // 异步记录日志
+                                await Translator.Log(originalSnapshot, translatedText, App.Settings, isOverWrite, token);
+                                
+                                return translatedText;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"翻译异常: {ex.Message}");
+                                return $"[翻译失败] {ex.Message}";
+                            }
+                        });
+                    }
+
+                    TranslateFlag = false;
+                    
+                    // 完整句子翻译后的短暂延迟，提供更好的视觉体验
+                    if (isSentenceComplete && hasUnprocessedSentence)
+                    {
+                        hasUnprocessedSentence = false;
+                        await Task.Delay(150); // 完整句子之后短暂暂停以提供更好的阅读体验
+                    }
+                }
+                
+                await Task.Delay(25); // 保持适当的循环间隔
+            }
+        }
+
+        public static string GetCaptions(AutomationElement window)
+        {
+            var captionsTextBlock = LiveCaptionsHandler.FindElementByAId(window, "CaptionsTextBlock");
+            if (captionsTextBlock == null)
+                return string.Empty;
+            return captionsTextBlock.Current.Name;
+        }
+
+        private static string ShortenDisplaySentence(string displaySentence, int maxByteLength)
+        {
+            while (Encoding.UTF8.GetByteCount(displaySentence) >= maxByteLength)
+            {
+                int commaIndex = displaySentence.IndexOfAny(PUNC_COMMA);
+                if (commaIndex < 0 || commaIndex + 1 >= displaySentence.Length)
+                    break;
+                displaySentence = displaySentence.Substring(commaIndex + 1);
+            }
+            return displaySentence;
+        }
+
+        private static string ReplaceNewlines(string text, int byteThreshold)
+        {
+            string[] splits = text.Split('\n');
+            for (int i = 0; i < splits.Length; i++)
+            {
+                splits[i] = splits[i].Trim();
+                if (i == splits.Length - 1)
+                    continue;
+
+                char lastChar = splits[i][^1];
+                bool isCJ = (lastChar >= '\u4E00' && lastChar <= '\u9FFF') ||
+                            (lastChar >= '\u3400' && lastChar <= '\u4DBF') ||
+                            (lastChar >= '\u3040' && lastChar <= '\u30FF');
+                bool isKorean = (lastChar >= '\uAC00' && lastChar <= '\uD7AF');
+
+                if (Encoding.UTF8.GetByteCount(splits[i]) >= byteThreshold)
+                    splits[i] += isCJ && !isKorean ? "。" : ". ";
+                else
+                    splits[i] += isCJ && !isKorean ? "——" : "—";
+            }
+            return string.Join("", splits);
+        }
         
         // 文本预处理
         private string PreprocessText(string text)
@@ -348,123 +517,6 @@ namespace LiveCaptionsTranslator.models
 
             // 如果句子过长，裁剪显示内容
             DisplayOriginalCaption = ShortenDisplaySentence(DisplayOriginalCaption, 160);
-        }
-
-        public async Task Translate()
-        {
-            var translationTaskQueue = new TranslationTaskQueue();
-            while (true)
-            {
-                if (App.Window == null)
-                {
-                    DisplayTranslatedCaption = "[WARNING] LiveCaptions was unexpectedly closed, restarting...";
-                    App.Window = LiveCaptionsHandler.LaunchLiveCaptions();
-                    StartListening(); // 重新设置事件监听
-                    DisplayTranslatedCaption = "";
-                } 
-                else if (LogOnlyFlag)
-                {
-                    TranslatedCaption = string.Empty;
-                    DisplayTranslatedCaption = "[Paused]";
-                } 
-                else if (!string.IsNullOrEmpty(translationTaskQueue.Output))
-                {
-                    // 获取主要翻译结果
-                    TranslatedCaption = translationTaskQueue.Output;
-                    DisplayTranslatedCaption = ShortenDisplaySentence(TranslatedCaption, 200);
-                }
-                else
-                {
-                    // 如果当前没有可用翻译，尝试获取备选翻译结果
-                    string backupResult = translationTaskQueue.GetLatestAvailableResult();
-                    if (!string.IsNullOrEmpty(backupResult))
-                    {
-                        TranslatedCaption = backupResult;
-                        DisplayTranslatedCaption = ShortenDisplaySentence(TranslatedCaption, 200);
-                    }
-                }
-
-                if (TranslateFlag)
-                {
-                    var originalSnapshot = OriginalCaption;
-
-                    // 如果旧句子是新句子的前缀，记录日志时覆盖之前的条目
-                    string lastLoggedOriginal = await SQLiteHistoryLogger.LoadLatestSourceText();
-                    bool isOverWrite = !string.IsNullOrEmpty(lastLoggedOriginal)
-                        && originalSnapshot.StartsWith(lastLoggedOriginal);
-
-                    if (LogOnlyFlag)
-                    {
-                        var LogOnlyTask = Task.Run(
-                            () => Translator.LogOnly(originalSnapshot, isOverWrite)
-                        );
-                    }
-                    else
-                    {
-                        translationTaskQueue.Enqueue(token => Task.Run(() =>
-                        {
-                            var TranslateTask = Translator.Translate(OriginalCaption, token);
-                            var LogTask = Translator.Log(
-                                originalSnapshot, TranslateTask.Result, App.Settings, isOverWrite, token);
-                            return TranslateTask;
-                        }));
-                    }
-
-                    TranslateFlag = false;
-                    
-                    // 完整句子翻译后的短暂延迟，提供更好的视觉体验
-                    if (isSentenceComplete && hasUnprocessedSentence)
-                    {
-                        hasUnprocessedSentence = false;
-                        await Task.Delay(150); // 完整句子之后短暂暂停以提供更好的阅读体验
-                    }
-                }
-                
-                await Task.Delay(25); // 保持适当的循环间隔
-            }
-        }
-
-        public static string GetCaptions(AutomationElement window)
-        {
-            var captionsTextBlock = LiveCaptionsHandler.FindElementByAId(window, "CaptionsTextBlock");
-            if (captionsTextBlock == null)
-                return string.Empty;
-            return captionsTextBlock.Current.Name;
-        }
-
-        private static string ShortenDisplaySentence(string displaySentence, int maxByteLength)
-        {
-            while (Encoding.UTF8.GetByteCount(displaySentence) >= maxByteLength)
-            {
-                int commaIndex = displaySentence.IndexOfAny(PUNC_COMMA);
-                if (commaIndex < 0 || commaIndex + 1 >= displaySentence.Length)
-                    break;
-                displaySentence = displaySentence.Substring(commaIndex + 1);
-            }
-            return displaySentence;
-        }
-
-        private static string ReplaceNewlines(string text, int byteThreshold)
-        {
-            string[] splits = text.Split('\n');
-            for (int i = 0; i < splits.Length; i++)
-            {
-                splits[i] = splits[i].Trim();
-                if (i == splits.Length - 1)
-                    continue;
-
-                char lastChar = splits[i][^1];
-                bool isCJ = (lastChar >= '\u4E00' && lastChar <= '\u9FFF') ||
-                            (lastChar >= '\u3400' && lastChar <= '\u4DBF') ||
-                            (lastChar >= '\u3040' && lastChar <= '\u30FF');
-                bool isKorean = (lastChar >= '\uAC00' && lastChar <= '\uD7AF');
-
-                if (Encoding.UTF8.GetByteCount(splits[i]) >= byteThreshold)
-                    splits[i] += isCJ && !isKorean ? "。" : ". ";
-                else
-                    splits[i] += isCJ && !isKorean ? "——" : "—";
-            }
-            return string.Join("", splits);
         }
     }
 }

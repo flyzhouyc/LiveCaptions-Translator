@@ -10,23 +10,54 @@ namespace LiveCaptionsTranslator.utils
 
         public static async Task<string> Translate(string text, CancellationToken token = default)
         {
+            if (string.IsNullOrEmpty(text))
+            {
+                Console.WriteLine("翻译文本为空");
+                return string.Empty;
+            }
+
+            Console.WriteLine($"开始翻译: {text}");
             string translatedText;
+            
             try
             {
-#if DEBUG
+    #if DEBUG
                 var sw = Stopwatch.StartNew();
-#endif
-                translatedText = await TranslateAPI.TranslateFunc(text, token);
-#if DEBUG
+    #endif
+                // 获取当前使用的翻译API
+                var translateFunc = TranslateAPI.TranslateFunc;
+                if (translateFunc == null)
+                {
+                    return "[翻译失败] 未找到可用的翻译API";
+                }
+                
+                // 调用翻译API
+                translatedText = await translateFunc(text, token);
+                
+                if (string.IsNullOrEmpty(translatedText))
+                {
+                    Console.WriteLine("翻译API返回结果为空");
+                    return "[翻译API返回结果为空]";
+                }
+                
+    #if DEBUG
                 sw.Stop();
                 translatedText = $"[{sw.ElapsedMilliseconds} ms] " + translatedText;
-#endif
+    #endif
+
+                Console.WriteLine($"翻译完成: {translatedText}");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("翻译操作被取消");
+                return string.Empty;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Error] Translation failed: {ex.Message}");
-                return $"[Translation Failed] {ex.Message}";
+                Console.WriteLine($"[Error] 翻译失败: {ex.Message}");
+                return $"[翻译失败] {ex.Message}";
             }
+            
             return translatedText;
         }
 
