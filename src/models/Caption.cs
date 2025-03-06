@@ -145,13 +145,13 @@ namespace LiveCaptionsTranslator.models
                 }
 
                 // 如果闲置时间过长，也触发翻译
-               // idleCount++;
-              //  if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence))
-              //  {
-              //      OriginalCaption = currentSentence;
-              //      TranslateFlag = true;
-              //      idleCount = 0;
-              //  }
+                idleCount++;
+                if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence))
+                {
+                    OriginalCaption = currentSentence;
+                    TranslateFlag = true;
+                    idleCount = 0;
+                }
 
                 Thread.Sleep(15);
             }
