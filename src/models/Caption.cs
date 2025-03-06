@@ -286,7 +286,7 @@ namespace LiveCaptionsTranslator.models
                     if (isSentenceComplete && hasUnprocessedSentence)
                     {
                         hasUnprocessedSentence = false;
-                        Thread.Sleep(150); // 完整句子之后短暂暂停以提供更好的阅读体验
+                        Thread.Sleep(300); // 完整句子之后短暂暂停以提供更好的阅读体验
                     }
                 }
                 
