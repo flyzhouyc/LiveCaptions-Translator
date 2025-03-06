@@ -134,24 +134,24 @@ namespace LiveCaptionsTranslator.models
                             stabilityCounter = 0; // 重置稳定性计数器
                         }
                         // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
-                        else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
-                                 Encoding.UTF8.GetByteCount(currentSentence) >= 15)
-                        {
-                            OriginalCaption = currentSentence;
-                            TranslateFlag = true;
-                            stabilityCounter = 0; // 重置稳定性计数器
-                        }
+                       // else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
+                        //         Encoding.UTF8.GetByteCount(currentSentence) >= 15)
+                       // {
+                       //     OriginalCaption = currentSentence;
+                        //    TranslateFlag = true;
+                        //    stabilityCounter = 0; // 重置稳定性计数器
+                        //}
                     }
                 }
 
                 // 如果闲置时间过长，也触发翻译
-                idleCount++;
-                if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence))
-                {
-                    OriginalCaption = currentSentence;
-                    TranslateFlag = true;
-                    idleCount = 0;
-                }
+               // idleCount++;
+              //  if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence))
+              //  {
+              //      OriginalCaption = currentSentence;
+              //      TranslateFlag = true;
+              //      idleCount = 0;
+              //  }
 
                 Thread.Sleep(15);
             }
