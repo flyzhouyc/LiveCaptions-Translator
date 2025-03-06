@@ -30,10 +30,17 @@ namespace LiveCaptionsTranslator.models
         // 稳定性计数器(句子保持不变的次数)
         private int stabilityCounter = 0;
         
-        // 【新增】句子缓冲区集合
+        // 句子缓冲区集合
         private List<string> sentenceBuffer = new List<string>();
-        // 【新增】上次批量翻译的时间戳
+        // 上次批量翻译的时间戳
         private DateTime lastBatchTranslationTime = DateTime.Now;
+        
+        // 新增：上次句子变化的时间
+        private DateTime lastSentenceChangeTime = DateTime.Now;
+        // 新增：最小时间稳定阈值(毫秒)
+        private const int MIN_TIME_STABILITY = 300;
+        // 新增：不完整句子的最小时间稳定阈值(毫秒)
+        private const int MIN_INCOMPLETE_STABILITY = 1000;
 
         public bool TranslateFlag { get; set; } = false;
         public bool LogOnlyFlag { get; set; } = false;
@@ -110,10 +117,17 @@ namespace LiveCaptionsTranslator.models
                 UpdateDisplayCaption(currentSentence, fullText);
 
                 // 判断句子是否发生变化
+                bool sentenceChanged = false;
                 if (currentSentence != currentSentenceBuilder)
                 {
-                    // 句子有变化，重置稳定性计数器
-                    stabilityCounter = 0;
+                    // 句子有变化
+                    sentenceChanged = true;
+                    
+                    // 更新上次句子变化时间
+                    lastSentenceChangeTime = DateTime.Now;
+                    
+                    // 不完全重置稳定性计数器，而是减少一部分
+                    stabilityCounter = Math.Max(0, stabilityCounter - 2);
                     currentSentenceBuilder = currentSentence;
                     
                     // 判断句子是否完整
@@ -123,53 +137,50 @@ namespace LiveCaptionsTranslator.models
                 {
                     // 句子保持不变，增加稳定性计数
                     stabilityCounter++;
-                    
-                    // 检查句子是否已经稳定了足够的时间
-                    if (stabilityCounter >= App.Settings?.MinStabilityCount)
-                    {
-                        // 判断是否有新的完整句子需要翻译
-                        if (isSentenceComplete && currentSentence != lastCompleteSentence)
-                        {
-                            // 【修改】将完整句子添加到缓冲区，而不是立即翻译
-                            lastCompleteSentence = currentSentence;
-                            AddSentenceToBuffer(currentSentence);
-                            hasUnprocessedSentence = true;
-                            stabilityCounter = 0; // 重置稳定性计数器
-                            
-                            // 检查是否应该触发批量翻译
-                            CheckAndTriggerBatchTranslation();
-                        }
-                        // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
-                        else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
-                                 Encoding.UTF8.GetByteCount(currentSentence) >= 15)
-                        {
-                            // 【修改】将不完整但稳定的长句加入缓冲区
-                            AddSentenceToBuffer(currentSentence);
-                            stabilityCounter = 0; // 重置稳定性计数器
-                            
-                            // 检查是否应该触发批量翻译
-                            CheckAndTriggerBatchTranslation();
-                        }
-                    }
                 }
 
-                // 如果闲置时间过长，也触发翻译
+                // 基于时间的稳定性判断
+                TimeSpan timeSinceLastChange = DateTime.Now - lastSentenceChangeTime;
+                
+                // 触发翻译的简化逻辑
+                // 条件1: 如果是完整句子且不是上次翻译的句子，并且满足稳定性条件
+                if (isSentenceComplete && currentSentence != lastCompleteSentence && 
+                    (stabilityCounter >= App.Settings?.MinStabilityCount || 
+                     timeSinceLastChange.TotalMilliseconds >= MIN_TIME_STABILITY))
+                {
+                    lastCompleteSentence = currentSentence;
+                    AddSentenceToBuffer(currentSentence);
+                    hasUnprocessedSentence = true;
+                    stabilityCounter = 0;
+                    CheckAndTriggerBatchTranslation();
+                }
+                // 条件2: 如果是不完整句子，但已经稳定足够长的时间或稳定计数足够高，且长度足够
+                else if (!isSentenceComplete && 
+                        (stabilityCounter >= App.Settings.MaxSyncInterval || 
+                         timeSinceLastChange.TotalMilliseconds >= MIN_INCOMPLETE_STABILITY) && 
+                        Encoding.UTF8.GetByteCount(currentSentence) >= 15)
+                {
+                    AddSentenceToBuffer(currentSentence);
+                    stabilityCounter = 0;
+                    CheckAndTriggerBatchTranslation();
+                }
+                
+                // 基于闲置时间的触发条件
                 idleCount++;
+                // 如果闲置时间过长，也触发翻译
                 if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence) && sentenceBuffer.Count > 0)
                 {
-                    // 如果当前句子不在缓冲区中，先添加
                     if (!sentenceBuffer.Contains(currentSentence))
                     {
                         AddSentenceToBuffer(currentSentence);
                     }
-                    
-                    // 触发批量翻译
                     TriggerBatchTranslation();
                     idleCount = 0;
                 }
                 
-                // 如果距离上次批量翻译已经过了设定的最大等待时间，且缓冲区不为空，则触发翻译
-                if ((DateTime.Now - lastBatchTranslationTime).TotalMilliseconds > App.Settings.BatchTranslationInterval && sentenceBuffer.Count > 0)
+                // 基于绝对时间的触发条件
+                TimeSpan timeSinceLastBatch = DateTime.Now - lastBatchTranslationTime;
+                if (timeSinceLastBatch.TotalMilliseconds > App.Settings.BatchTranslationInterval && sentenceBuffer.Count > 0)
                 {
                     TriggerBatchTranslation();
                 }
@@ -178,7 +189,7 @@ namespace LiveCaptionsTranslator.models
             }
         }
         
-        // 【新增】将句子添加到缓冲区
+        // 将句子添加到缓冲区
         private void AddSentenceToBuffer(string sentence)
         {
             // 避免重复添加相同句子
@@ -188,7 +199,7 @@ namespace LiveCaptionsTranslator.models
             }
         }
         
-        // 【新增】检查是否应该触发批量翻译
+        // 检查是否应该触发批量翻译
         private void CheckAndTriggerBatchTranslation()
         {
             // 如果缓冲区满了，触发批量翻译
@@ -198,7 +209,7 @@ namespace LiveCaptionsTranslator.models
             }
         }
         
-        // 【新增】触发批量翻译
+        // 触发批量翻译
         private void TriggerBatchTranslation()
         {
             if (sentenceBuffer.Count == 0)
