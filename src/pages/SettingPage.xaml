@@ -82,7 +82,7 @@
                         Margin="0,0,5,0"
                         AutoToolTipPlacement="TopLeft"
                         AutoToolTipPrecision="0"
-                        Maximum="100"
+                        Maximum="200"
                         Value="{Binding MaxSyncInterval, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
             </StackPanel>
@@ -115,7 +115,7 @@
                         Margin="0,0,5,0"
                         AutoToolTipPlacement="TopLeft"
                         AutoToolTipPrecision="0"
-                        Maximum="100"
+                        Maximum="200"
                         Minimum="1"
                         Value="{Binding MinStabilityCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
