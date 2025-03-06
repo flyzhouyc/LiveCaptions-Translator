@@ -124,7 +124,7 @@ namespace LiveCaptionsTranslator.models
                     if (stabilityCounter >= App.Settings?.MinStabilityCount)
                     {
                         // 判断是否有新的完整句子需要翻译
-                        if (isSentenceComplete) //&& currentSentence != lastCompleteSentence)
+                        if (isSentenceComplete && currentSentence != lastCompleteSentence)
                         {
                             // 如果有一个新的完整句子，标记为未处理并准备翻译
                             OriginalCaption = currentSentence;
@@ -133,14 +133,14 @@ namespace LiveCaptionsTranslator.models
                             TranslateFlag = true;
                             stabilityCounter = 0; // 重置稳定性计数器
                         }
-                        // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
-                       // else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
-                        //         Encoding.UTF8.GetByteCount(currentSentence) >= 15)
-                       // {
-                       //     OriginalCaption = currentSentence;
-                        //    TranslateFlag = true;
-                        //    stabilityCounter = 0; // 重置稳定性计数器
-                        //}
+                         如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
+                        else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
+                                 Encoding.UTF8.GetByteCount(currentSentence) >= 15)
+                        {
+                            OriginalCaption = currentSentence;
+                            TranslateFlag = true;
+                            stabilityCounter = 0; // 重置稳定性计数器
+                        }
                     }
                 }
 
@@ -286,11 +286,11 @@ namespace LiveCaptionsTranslator.models
                     if (isSentenceComplete && hasUnprocessedSentence)
                     {
                         hasUnprocessedSentence = false;
-                        Thread.Sleep(300); // 完整句子之后短暂暂停以提供更好的阅读体验
+                        Thread.Sleep(150); // 完整句子之后短暂暂停以提供更好的阅读体验
                     }
                 }
                 
-                Thread.Sleep(25);
+                Thread.Sleep(15); 
             }
         }
 
