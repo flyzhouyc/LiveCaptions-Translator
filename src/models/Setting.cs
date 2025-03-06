@@ -21,6 +21,10 @@ namespace LiveCaptionsTranslator.models
         private int maxIdleInterval = 20;
         private int maxSyncInterval = 5;
         private int minStabilityCount = 3; // 新增的稳定性阈值属性
+        
+        // 新增的句子缓冲区参数
+        private int maxBufferSize = 1;  // 默认为1，即单句翻译
+        private int batchTranslationInterval = 5000;  // 默认5秒
 
         private Dictionary<string, string> windowBounds;
         private bool topmost = true;
@@ -79,6 +83,28 @@ namespace LiveCaptionsTranslator.models
                 OnPropertyChanged("MinStabilityCount");
             }
         }
+        
+        // 新增属性
+        public int MaxBufferSize
+        {
+            get => maxBufferSize;
+            set
+            {
+                maxBufferSize = value;
+                OnPropertyChanged("MaxBufferSize");
+            }
+        }
+        
+        public int BatchTranslationInterval
+        {
+            get => batchTranslationInterval;
+            set
+            {
+                batchTranslationInterval = value;
+                OnPropertyChanged("BatchTranslationInterval");
+            }
+        }
+        
         public string Prompt
         {
             get => prompt;
@@ -145,6 +171,9 @@ namespace LiveCaptionsTranslator.models
                 { "MainWindow", "1, 1, 1, 1" },
                 { "SubtitleWindow", "1, 1, 1, 1" },
             };
+            // 初始化新增参数
+            maxBufferSize = 1;
+            batchTranslationInterval = 5000;
         }
 
         public Setting(string apiName, string targetLanguage, string prompt,
@@ -155,6 +184,9 @@ namespace LiveCaptionsTranslator.models
             this.prompt = prompt;
             this.configs = configs;
             this.windowBounds = windowBounds;
+            // 初始化新增参数
+            this.maxBufferSize = 1;
+            this.batchTranslationInterval = 5000;
         }
 
         public static Setting Load()

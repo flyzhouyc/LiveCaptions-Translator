@@ -29,7 +29,11 @@ namespace LiveCaptionsTranslator.models
         private bool hasUnprocessedSentence = false;
         // 稳定性计数器(句子保持不变的次数)
         private int stabilityCounter = 0;
-        // 句子需要保持稳定的最小计数 - 已删除常量定义，改用Settings中的属性
+        
+        // 【新增】句子缓冲区集合
+        private List<string> sentenceBuffer = new List<string>();
+        // 【新增】上次批量翻译的时间戳
+        private DateTime lastBatchTranslationTime = DateTime.Now;
 
         public bool TranslateFlag { get; set; } = false;
         public bool LogOnlyFlag { get; set; } = false;
@@ -126,34 +130,98 @@ namespace LiveCaptionsTranslator.models
                         // 判断是否有新的完整句子需要翻译
                         if (isSentenceComplete && currentSentence != lastCompleteSentence)
                         {
-                            // 如果有一个新的完整句子，标记为未处理并准备翻译
-                            OriginalCaption = currentSentence;
+                            // 【修改】将完整句子添加到缓冲区，而不是立即翻译
                             lastCompleteSentence = currentSentence;
+                            AddSentenceToBuffer(currentSentence);
                             hasUnprocessedSentence = true;
-                            TranslateFlag = true;
                             stabilityCounter = 0; // 重置稳定性计数器
+                            
+                            // 检查是否应该触发批量翻译
+                            CheckAndTriggerBatchTranslation();
                         }
-                         //如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
+                        // 如果句子稳定但不完整，且已经稳定足够长时间，也触发翻译
                         else if (!isSentenceComplete && stabilityCounter >= App.Settings.MaxSyncInterval && 
                                  Encoding.UTF8.GetByteCount(currentSentence) >= 15)
                         {
-                            OriginalCaption = currentSentence;
-                            TranslateFlag = true;
+                            // 【修改】将不完整但稳定的长句加入缓冲区
+                            AddSentenceToBuffer(currentSentence);
                             stabilityCounter = 0; // 重置稳定性计数器
+                            
+                            // 检查是否应该触发批量翻译
+                            CheckAndTriggerBatchTranslation();
                         }
                     }
                 }
 
                 // 如果闲置时间过长，也触发翻译
                 idleCount++;
-                if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence))
+                if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence) && sentenceBuffer.Count > 0)
                 {
-                    OriginalCaption = currentSentence;
-                    TranslateFlag = true;
+                    // 如果当前句子不在缓冲区中，先添加
+                    if (!sentenceBuffer.Contains(currentSentence))
+                    {
+                        AddSentenceToBuffer(currentSentence);
+                    }
+                    
+                    // 触发批量翻译
+                    TriggerBatchTranslation();
                     idleCount = 0;
+                }
+                
+                // 如果距离上次批量翻译已经过了设定的最大等待时间，且缓冲区不为空，则触发翻译
+                if ((DateTime.Now - lastBatchTranslationTime).TotalMilliseconds > App.Settings.BatchTranslationInterval && sentenceBuffer.Count > 0)
+                {
+                    TriggerBatchTranslation();
                 }
 
                 Thread.Sleep(15);
+            }
+        }
+        
+        // 【新增】将句子添加到缓冲区
+        private void AddSentenceToBuffer(string sentence)
+        {
+            // 避免重复添加相同句子
+            if (!sentenceBuffer.Contains(sentence))
+            {
+                sentenceBuffer.Add(sentence);
+            }
+        }
+        
+        // 【新增】检查是否应该触发批量翻译
+        private void CheckAndTriggerBatchTranslation()
+        {
+            // 如果缓冲区满了，触发批量翻译
+            if (sentenceBuffer.Count >= App.Settings.MaxBufferSize)
+            {
+                TriggerBatchTranslation();
+            }
+        }
+        
+        // 【新增】触发批量翻译
+        private void TriggerBatchTranslation()
+        {
+            if (sentenceBuffer.Count == 0)
+                return;
+                
+            // 合并缓冲区中的所有句子
+            string combinedText = string.Join(" ", sentenceBuffer);
+            
+            // 设置翻译文本并触发翻译
+            OriginalCaption = combinedText;
+            TranslateFlag = true;
+            
+            // 更新上次批量翻译时间
+            lastBatchTranslationTime = DateTime.Now;
+            
+            // 清空缓冲区
+            sentenceBuffer.Clear();
+            
+            // 完整句子翻译后的短暂延迟，提供更好的视觉体验
+            if (hasUnprocessedSentence)
+            {
+                hasUnprocessedSentence = false;
+                Thread.Sleep(150); // 完整句子之后短暂暂停以提供更好的阅读体验
             }
         }
 
@@ -194,9 +262,9 @@ namespace LiveCaptionsTranslator.models
                 return false;
                 
             // 以句末标点结尾的句子视为完整
-            return Array.IndexOf(PUNC_EOS, sentence[^1]) != -1; //|| 
+            return Array.IndexOf(PUNC_EOS, sentence[^1]) != -1 || 
                    // 或者长度超过一定阈值且已稳定一段时间
-                   //(Encoding.UTF8.GetByteCount(sentence) >= 100 && stabilityCounter >= 10);
+                   (Encoding.UTF8.GetByteCount(sentence) >= 50 && stabilityCounter >= 10);
         }
 
         // 更新显示的原始字幕
@@ -281,16 +349,9 @@ namespace LiveCaptionsTranslator.models
                     }
 
                     TranslateFlag = false;
-                    
-                    // 完整句子翻译后的短暂延迟，提供更好的视觉体验
-                    if (isSentenceComplete && hasUnprocessedSentence)
-                    {
-                        hasUnprocessedSentence = false;
-                        Thread.Sleep(150); // 完整句子之后短暂暂停以提供更好的阅读体验
-                    }
                 }
                 
-                Thread.Sleep(15); 
+                Thread.Sleep(25);
             }
         }
 
