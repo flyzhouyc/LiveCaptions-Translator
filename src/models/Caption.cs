@@ -194,9 +194,9 @@ namespace LiveCaptionsTranslator.models
                 return false;
                 
             // 以句末标点结尾的句子视为完整
-            return Array.IndexOf(PUNC_EOS, sentence[^1]) != -1 || 
+            return Array.IndexOf(PUNC_EOS, sentence[^1]) != -1; //|| 
                    // 或者长度超过一定阈值且已稳定一段时间
-                   (Encoding.UTF8.GetByteCount(sentence) >= 100 && stabilityCounter >= 10);
+                   //(Encoding.UTF8.GetByteCount(sentence) >= 100 && stabilityCounter >= 10);
         }
 
         // 更新显示的原始字幕
