@@ -124,7 +124,7 @@ namespace LiveCaptionsTranslator.models
                     if (stabilityCounter >= App.Settings?.MinStabilityCount)
                     {
                         // 判断是否有新的完整句子需要翻译
-                        if (isSentenceComplete && currentSentence != lastCompleteSentence)
+                        if (isSentenceComplete) //&& currentSentence != lastCompleteSentence)
                         {
                             // 如果有一个新的完整句子，标记为未处理并准备翻译
                             OriginalCaption = currentSentence;

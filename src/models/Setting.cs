@@ -18,7 +18,7 @@ namespace LiveCaptionsTranslator.models
         private string targetLanguage;
         private string prompt;
 
-        private int maxIdleInterval = 80;
+        private int maxIdleInterval = 20;
         private int maxSyncInterval = 5;
         private int minStabilityCount = 3; // 新增的稳定性阈值属性
 
