@@ -53,7 +53,7 @@ namespace LiveCaptionsTranslator.models
         };
 
         private string modelName = "";
-        private double temperature = 1.0;
+        private double temperature = 0;
 
         public string ModelName
         {

@@ -120,6 +120,77 @@
                         Value="{Binding MinStabilityCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
             </StackPanel>
+            
+            <!-- 移动到这里的缓冲区大小控制 -->
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="2.5,0,0,5" Text="Buffer Size" />
+                    <ui:Flyout x:Name="BufferSizeInfoFlyout">
+                        <TextBlock Width="320" TextWrapping="Wrap">
+                            <Run Text="Set the number of complete sentences to collect before triggering translation. Set to 1 for sentence-by-sentence translation; higher values reduce API calls but increase delay." />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="BufferSizeButton_MouseEnter"
+                        MouseLeave="BufferSizeButton_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <ComboBox
+                    x:Name="bufferSizeBox"
+                    Width="145"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    SelectedValue="{Binding MaxBufferSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    SelectionChanged="bufferSizeBox_SelectionChanged">
+                    <ComboBoxItem Content="Single sentence" Tag="1" />
+                    <ComboBoxItem Content="2 sentences" Tag="2" />
+                    <ComboBoxItem Content="3 sentences" Tag="3" />
+                    <ComboBoxItem Content="5 sentences" Tag="5" />
+                </ComboBox>
+            </StackPanel>
+
+            <!-- 移动到这里的批量翻译间隔控制 -->
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="2.5,0,0,5" Text="Batch Interval (sec)" />
+                    <ui:Flyout x:Name="BatchIntervalInfoFlyout">
+                        <TextBlock Width="320" TextWrapping="Wrap">
+                            <Run Text="Set the maximum waiting time (in seconds) to force batch translation even if the buffer is not full. Lower values provide more real-time translation, higher values may more efficiently combine sentences." />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="BatchIntervalButton_MouseEnter"
+                        MouseLeave="BatchIntervalButton_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <ui:NumberBox
+                    Width="145"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    ClearButtonEnabled="False"
+                    FontSize="13.3"
+                    LargeChange="1"
+                    Maximum="30"
+                    Minimum="1"
+                    SmallChange="1"
+                    SpinButtonPlacementMode="Inline"
+                    Value="{Binding BatchTranslationInterval, Converter={StaticResource MillisecondsToSecondsConverter}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Vertical">
@@ -354,82 +425,8 @@
                     FontSize="13.3"
                     Text="{Binding CurrentAPIConfig.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
-            <StackPanel Grid.Column="0" Orientation="Vertical">
-    <!-- 现有控件 -->
-    
-    <!-- 新增句子缓冲区大小控制 -->
-    <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-        <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-            <TextBlock Margin="2.5,0,0,5" Text="句子缓冲数量" />
-            <ui:Flyout x:Name="BufferSizeInfoFlyout">
-                <TextBlock Width="320" TextWrapping="Wrap">
-                    <Run Text="设置在触发翻译前要收集的完整句子数量。设置为1时相当于逐句翻译，设置更高的值可减少API调用但会增加延迟。" />
-                </TextBlock>
-            </ui:Flyout>
-            <Button
-                Width="15"
-                Height="15"
-                Margin="-5,-3,0,0"
-                Padding="0"
-                Background="Transparent"
-                BorderThickness="0"
-                MouseEnter="BufferSizeButton_MouseEnter"
-                MouseLeave="BufferSizeButton_MouseLeave">
-                <ui:SymbolIcon Symbol="Info16" />
-            </Button>
-        </StackPanel>
-        <ComboBox
-            x:Name="bufferSizeBox"
-            Width="150"
-            Height="30"
-            Padding="10,4,10,7"
-            FontSize="13.3"
-            SelectedValue="{Binding MaxBufferSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-            SelectionChanged="bufferSizeBox_SelectionChanged">
-            <ComboBoxItem Content="单句翻译" Tag="1" />
-            <ComboBoxItem Content="2句批量" Tag="2" />
-            <ComboBoxItem Content="3句批量" Tag="3" />
-            <ComboBoxItem Content="5句批量" Tag="5" />
-        </ComboBox>
-    </StackPanel>
-
-    <!-- 新增批量翻译间隔控制 -->
-    <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-        <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-            <TextBlock Margin="2.5,0,0,5" Text="批量翻译间隔(秒)" />
-            <ui:Flyout x:Name="BatchIntervalInfoFlyout">
-                <TextBlock Width="320" TextWrapping="Wrap">
-                    <Run Text="设置即使缓冲区未满，也强制执行批量翻译的最大等待时间(秒)。较低的值提供更实时的翻译，较高的值可能更有效地合并句子。" />
-                </TextBlock>
-            </ui:Flyout>
-            <Button
-                Width="15"
-                Height="15"
-                Margin="-5,-3,0,0"
-                Padding="0"
-                Background="Transparent"
-                BorderThickness="0"
-                MouseEnter="BatchIntervalButton_MouseEnter"
-                MouseLeave="BatchIntervalButton_MouseLeave">
-                <ui:SymbolIcon Symbol="Info16" />
-            </Button>
-        </StackPanel>
-        <ui:NumberBox
-            Width="150"
-            Height="30"
-            Padding="10,4,10,7"
-            ClearButtonEnabled="False"
-            FontSize="13.3"
-            LargeChange="1"
-            Maximum="30"
-            Minimum="1"
-            SmallChange="1"
-            SpinButtonPlacementMode="Inline"
-            Value="{Binding BatchTranslationInterval, Converter={StaticResource MillisecondsToSecondsConverter}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-    </StackPanel>
-</StackPanel>
-
-            <Grid x:Name="NoSettingGrid" Grid.Column="2" />
         </Grid>
+
+        <Grid x:Name="NoSettingGrid" Grid.Column="2" />
     </Grid>
 </Page>
