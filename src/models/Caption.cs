@@ -35,12 +35,16 @@ namespace LiveCaptionsTranslator.models
         // 上次批量翻译的时间戳
         private DateTime lastBatchTranslationTime = DateTime.Now;
         
-        // 新增：上次句子变化的时间
+        // 上次句子变化的时间
         private DateTime lastSentenceChangeTime = DateTime.Now;
-        // 新增：最小时间稳定阈值(毫秒)
+        // 最小时间稳定阈值(毫秒)
         private const int MIN_TIME_STABILITY = 300;
-        // 新增：不完整句子的最小时间稳定阈值(毫秒)
+        // 不完整句子的最小时间稳定阈值(毫秒)
         private const int MIN_INCOMPLETE_STABILITY = 1000;
+        // 短句子的最小时间稳定阈值(毫秒)
+        private const int MIN_SHORT_SENTENCE_STABILITY = 500;
+        // 短句子的最小字节长度
+        private const int MIN_SHORT_SENTENCE_LENGTH = 2;
 
         public bool TranslateFlag { get; set; } = false;
         public bool LogOnlyFlag { get; set; } = false;
@@ -142,6 +146,12 @@ namespace LiveCaptionsTranslator.models
                 // 基于时间的稳定性判断
                 TimeSpan timeSinceLastChange = DateTime.Now - lastSentenceChangeTime;
                 
+                // 获取当前句子的字节长度
+                int sentenceByteLength = Encoding.UTF8.GetByteCount(currentSentence);
+                
+                // 是否为短句（单词）判断
+                bool isShortSentence = sentenceByteLength >= MIN_SHORT_SENTENCE_LENGTH && sentenceByteLength < 15;
+                
                 // 触发翻译的简化逻辑
                 // 条件1: 如果是完整句子且不是上次翻译的句子，并且满足稳定性条件
                 if (isSentenceComplete && currentSentence != lastCompleteSentence && 
@@ -154,11 +164,19 @@ namespace LiveCaptionsTranslator.models
                     stabilityCounter = 0;
                     CheckAndTriggerBatchTranslation();
                 }
-                // 条件2: 如果是不完整句子，但已经稳定足够长的时间或稳定计数足够高，且长度足够
+                // 条件2a: 如果是短句/单词，使用更宽松的条件 
+                else if (isShortSentence && 
+                       timeSinceLastChange.TotalMilliseconds >= MIN_SHORT_SENTENCE_STABILITY)
+                {
+                    AddSentenceToBuffer(currentSentence);
+                    stabilityCounter = 0;
+                    CheckAndTriggerBatchTranslation();
+                }
+                // 条件2b: 如果是不完整句子，但已经稳定足够长的时间或稳定计数足够高，且长度足够
                 else if (!isSentenceComplete && 
                         (stabilityCounter >= App.Settings.MaxSyncInterval || 
                          timeSinceLastChange.TotalMilliseconds >= MIN_INCOMPLETE_STABILITY) && 
-                        Encoding.UTF8.GetByteCount(currentSentence) >= 15)
+                        sentenceByteLength >= 15)
                 {
                     AddSentenceToBuffer(currentSentence);
                     stabilityCounter = 0;
@@ -167,6 +185,7 @@ namespace LiveCaptionsTranslator.models
                 
                 // 基于闲置时间的触发条件
                 idleCount++;
+                
                 // 如果闲置时间过长，也触发翻译
                 if (idleCount >= App.Settings.MaxIdleInterval && !string.IsNullOrEmpty(currentSentence) && sentenceBuffer.Count > 0)
                 {
@@ -254,10 +273,17 @@ namespace LiveCaptionsTranslator.models
         {
             // 查找最后一个句子结束标点
             int lastEOSIndex;
-            if (Array.IndexOf(PUNC_EOS, fullText[^1]) != -1)
-                lastEOSIndex = fullText[0..^1].LastIndexOfAny(PUNC_EOS);
+            if (fullText.Length > 0)
+            {
+                if (Array.IndexOf(PUNC_EOS, fullText[^1]) != -1)
+                    lastEOSIndex = fullText.Length >= 2 ? fullText[0..^1].LastIndexOfAny(PUNC_EOS) : -1;
+                else
+                    lastEOSIndex = fullText.LastIndexOfAny(PUNC_EOS);
+            }
             else
-                lastEOSIndex = fullText.LastIndexOfAny(PUNC_EOS);
+            {
+                return string.Empty;
+            }
 
             // 如果找到了句末标点，提取最后一个句子
             if (lastEOSIndex >= 0)
@@ -275,7 +301,32 @@ namespace LiveCaptionsTranslator.models
             // 以句末标点结尾的句子视为完整
             return Array.IndexOf(PUNC_EOS, sentence[^1]) != -1 || 
                    // 或者长度超过一定阈值且已稳定一段时间
-                   (Encoding.UTF8.GetByteCount(sentence) >= 50 && stabilityCounter >= 10);
+                   (Encoding.UTF8.GetByteCount(sentence) >= 50 && stabilityCounter >= 10) ||
+                   // 短句也可以视为完整(特别是Yes, No这样的回答)
+                   (IsLikelyCompleteShortSentence(sentence) && stabilityCounter >= 5);
+        }
+        
+        // 判断是否看起来像完整的短句
+        private bool IsLikelyCompleteShortSentence(string sentence)
+        {
+            // 常见的单词响应列表
+            string[] commonResponses = { "yes", "no", "ok", "sure", "right", "wrong", "maybe", 
+                                        "exactly", "definitely", "certainly", "precisely",
+                                        "never", "always", "indeed", "correct", "incorrect" };
+            
+            string lowerSentence = sentence.ToLower().Trim();
+            
+            // 检查是否匹配常见的单词响应
+            foreach (var response in commonResponses)
+            {
+                if (lowerSentence == response || lowerSentence == response + ".")
+                    return true;
+            }
+            
+            // 检查是否只有一个单词
+            return !lowerSentence.Contains(" ") && 
+                   Encoding.UTF8.GetByteCount(lowerSentence) >= MIN_SHORT_SENTENCE_LENGTH && 
+                   Encoding.UTF8.GetByteCount(lowerSentence) <= 12;
         }
 
         // 更新显示的原始字幕
@@ -284,8 +335,8 @@ namespace LiveCaptionsTranslator.models
             // 更新显示的原始字幕
             DisplayOriginalCaption = currentSentence;
 
-            // 如果当前句子过短，尝试显示更多上下文
-            if (Encoding.UTF8.GetByteCount(currentSentence) < 12)
+            // 如果当前句子过短但不是常见短句，尝试显示更多上下文
+            if (Encoding.UTF8.GetByteCount(currentSentence) < 12 && !IsLikelyCompleteShortSentence(currentSentence))
             {
                 int lastEOSIndex = fullText.LastIndexOfAny(PUNC_EOS);
                 if (lastEOSIndex > 0)
