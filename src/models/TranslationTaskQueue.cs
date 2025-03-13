@@ -60,19 +60,24 @@ namespace LiveCaptionsTranslator.models
                 tasks.RemoveAt(index);
             }
 
-            // 更新翻译结果
+            // 更新翻译结果 - 修改日志处理逻辑
             if (!translationTask.CTS.IsCancellationRequested)
             {
                 string result = translationTask.Task.Result;
-                // 只有在结果非空时才更新显示
-                if (!string.IsNullOrEmpty(result))
+                
+                // 始终更新空结果，但确保非空结果才更新显示内容
+                translatedText = result;
+                
+                // 无论结果是否为空，都记录日志（与原代码保持一致）
+                bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
+                
+                // 记录翻译并通知UI更新
+                await Translator.Log(translationTask.OriginalText, result, isOverwrite);
+                
+                // 先日志记录，再添加到显示卡片
+                if (!isOverwrite)
                 {
-                    translatedText = result;
-                    // 日志记录
-                    bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
-                    if (!isOverwrite)
-                        await App.Caption.AddLogCard();
-                    await Translator.Log(translationTask.OriginalText, translatedText, isOverwrite);
+                    await App.Caption.AddLogCard();
                 }
             }
         }

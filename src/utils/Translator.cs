@@ -36,8 +36,16 @@ namespace LiveCaptionsTranslator.utils
         }
 
         public static async Task Log(string originalText, string translatedText, 
-            bool isOverwrite = false, CancellationToken token = default)
+    bool isOverwrite = false, CancellationToken token = default)
         {
+            // 防止空字符串日志问题
+            if (string.IsNullOrEmpty(originalText))
+                return;
+                
+            // 如果翻译结果为空，使用占位符
+            string logTranslatedText = string.IsNullOrEmpty(translatedText) ? 
+                "[No translation result]" : translatedText;
+            
             string targetLanguage, apiName;
             if (App.Setting != null)
             {
@@ -54,7 +62,10 @@ namespace LiveCaptionsTranslator.utils
             {
                 if (isOverwrite)
                     await SQLiteHistoryLogger.DeleteLastTranslation(token);
-                await SQLiteHistoryLogger.LogTranslation(originalText, translatedText, targetLanguage, apiName);
+                    
+                await SQLiteHistoryLogger.LogTranslation(originalText, logTranslatedText, targetLanguage, apiName);
+                
+                // 确保事件被触发
                 TranslationLogged?.Invoke();
             }
             catch (OperationCanceledException)

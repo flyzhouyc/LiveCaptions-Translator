@@ -16,10 +16,13 @@ namespace LiveCaptionsTranslator
             DataContext = App.Caption;
             Instance = this;
 
-            Loaded += (s, e) => App.Caption.PropertyChanged += TranslatedChanged;
+            Loaded += (s, e) => {
+                App.Caption.PropertyChanged += TranslatedChanged;
+                
+                // 确保日志显示状态正确
+                CollapseTranslatedCaption(App.Setting.MainWindow.CaptionLogEnabled);
+            };
             Unloaded += (s, e) => App.Caption.PropertyChanged -= TranslatedChanged;
-
-            CollapseTranslatedCaption(App.Setting.MainWindow.CaptionLogEnabled);
         }
 
         private async void TextBlock_MouseLeftButtonDown(object sender, RoutedEventArgs e)
@@ -63,18 +66,22 @@ namespace LiveCaptionsTranslator
 
         public void CollapseTranslatedCaption(bool collapse)
         {
-            var converter = new GridLengthConverter();
+            // 使用Dispatcher确保UI线程上的操作
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var converter = new GridLengthConverter();
 
-            if (collapse)
-            {
-                TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("Auto");
-                CaptionLogCard.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("*");
-                CaptionLogCard.Visibility = Visibility.Collapsed;
-            }
+                if (collapse)
+                {
+                    TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("Auto");
+                    CaptionLogCard.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("*");
+                    CaptionLogCard.Visibility = Visibility.Collapsed;
+                }
+            }));
         }
     }
 }
