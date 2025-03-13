@@ -3,6 +3,8 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using LiveCaptionsTranslator.utils; // 添加这行引用LiveCaptionsTranslator.utils命名空间
+using LiveCaptionsTranslator.models; // 添加这行引用TranslationHistoryEntry类
 
 namespace LiveCaptionsTranslator
 {
@@ -21,10 +23,13 @@ namespace LiveCaptionsTranslator
                 
                 // 确保日志显示状态正确
                 CollapseTranslatedCaption(App.Setting.MainWindow.CaptionLogEnabled);
-                await InitializeLogCards();
+                
+                // 初始化日志记录 - 使用Task.Run而不是await
+                Task.Run(InitializeLogCards);
             };
             Unloaded += (s, e) => App.Caption.PropertyChanged -= TranslatedChanged;
         }
+
         private async Task InitializeLogCards()
         {
             try
@@ -33,7 +38,7 @@ namespace LiveCaptionsTranslator
                 int logCount = App.Setting?.MainWindow.CaptionLogMax ?? 2;
                 var recentLogs = await SQLiteHistoryLogger.LoadRecentEntries(logCount);
                 
-                if (recentLogs.Count > 0)
+                if (recentLogs.Count > 0) // 修正这里检查集合的Count属性
                 {
                     lock (App.Caption._logLock)
                     {
@@ -48,7 +53,10 @@ namespace LiveCaptionsTranslator
                         }
                     }
                     
-                    App.Caption.OnPropertyChanged("DisplayLogCards");
+                    // 使用Dispatcher确保在UI线程更新
+                    Dispatcher.BeginInvoke(() => {
+                        App.Caption.OnPropertyChanged("DisplayLogCards");
+                    });
                 }
             }
             catch (Exception ex)

@@ -64,38 +64,16 @@ namespace LiveCaptionsTranslator.models
             if (!translationTask.CTS.IsCancellationRequested)
             {
                 string result = translationTask.Task.Result;
-                translatedText = result;
+                translatedText = result; // 更新翻译文本
                 
-                // 获取覆写状态
+                // 记录到历史并更新UI
                 bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
                 
-                // 直接添加到日志卡片 - 重要修复：无条件添加日志卡片
-                var entry = new TranslationHistoryEntry
-                {
-                    Timestamp = DateTime.Now.ToString("MM/dd HH:mm"),
-                    TimestampFull = DateTime.Now.ToString("MM/dd/yy, HH:mm:ss"),
-                    SourceText = translationTask.OriginalText,
-                    TranslatedText = string.IsNullOrEmpty(result) ? "[No translation result]" : result,
-                    TargetLanguage = App.Setting?.TargetLanguage ?? "N/A",
-                    ApiUsed = App.Setting?.ApiName ?? "N/A"
-                };
-                
-                // 先添加到本地显示
-                lock (App.Caption._logLock)
-                {
-                    if (App.Caption.LogCards.Count >= App.Setting?.MainWindow.CaptionLogMax)
-                        App.Caption.LogCards.Dequeue();
-                        
-                    App.Caption.LogCards.Enqueue(entry);
-                    
-                    // 直接在主线程上触发属性更改通知
-                    App.Current.Dispatcher.BeginInvoke(() => {
-                        App.Caption.OnPropertyChanged("DisplayLogCards");
-                    });
-                }
-                
-                // 再保存到数据库
+                // 确保非空结果也记录
                 await Translator.Log(translationTask.OriginalText, result, isOverwrite);
+                
+                // 无论是否覆盖，都尝试添加到显示卡片
+                await App.Caption.AddLogCard();
             }
         }
         
