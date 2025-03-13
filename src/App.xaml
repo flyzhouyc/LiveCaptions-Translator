@@ -4,7 +4,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:LiveCaptionsTranslator"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:utils="clr-namespace:LiveCaptionsTranslator.utils"
     ShutdownMode="OnMainWindowClose"
     StartupUri="MainWindow.xaml">
     <Application.Resources>
@@ -14,7 +13,6 @@
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
             <FontFamily x:Key="SegoeFluentIcons">pack://application:,,,/;component/Fonts/#Segoe Fluent Icons</FontFamily>
-            <utils:MillisecondsToSecondsConverter x:Key="MillisecondsToSecondsConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

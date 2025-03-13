@@ -6,7 +6,14 @@ namespace LiveCaptionsTranslator.models
 {
     public class TranslateAPIConfig : INotifyPropertyChanged
     {
-        protected static readonly Dictionary<string, string> SUPPORTED_LANGUAGES = new()
+        /*
+         * The key of this property is used as the content for `targetLangBox` in the `SettingPage`.
+         * Its purpose is to standardize the language selection interface.
+         * Therefore, if your API doesn't follow the key format, please override this property.
+         * (See the definition of `DeepLConfig` for an example)
+         */
+        [JsonIgnore]
+        public virtual Dictionary<string, string> SupportedLanguages { get; } = new()
         {
             { "zh-CN", "zh-CN" },
             { "zh-TW", "zh-TW" },
@@ -17,18 +24,13 @@ namespace LiveCaptionsTranslator.models
             { "fr-FR", "fr-FR" },
             { "th-TH", "th-TH" },
         };
-        [JsonIgnore]
-        public Dictionary<string, string> SupportedLanguages
-        {
-            get => SUPPORTED_LANGUAGES;
-        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            App.Settings?.Save();
+            App.Setting?.Save();
         }
     }
 
@@ -39,21 +41,9 @@ namespace LiveCaptionsTranslator.models
             public string role { get; set; }
             public string content { get; set; }
         }
-
-        protected static new readonly Dictionary<string, string> SUPPORTED_LANGUAGES = new()
-        {
-            { "zh-CN", "Simplified Chinese" },
-            { "zh-TW", "Traditional Chinese" },
-            { "en-US", "American English" },
-            { "en-GB", "British English" },
-            { "ja-JP", "Japanese" },
-            { "ko-KR", "Korean" },
-            { "fr-FR", "French" },
-            { "th-TH", "Thai" },
-        };
-
+        
         private string modelName = "";
-        private double temperature = 0;
+        private double temperature = 1.0;
 
         public string ModelName
         {
@@ -121,7 +111,7 @@ namespace LiveCaptionsTranslator.models
             public int prompt_cache_hit_tokens { get; set; }
             public int prompt_cache_miss_tokens { get; set; }
         }
-        public new class Response
+        public class Response
         {
             public string id { get; set; }
             public string @object { get; set; }
@@ -165,6 +155,43 @@ namespace LiveCaptionsTranslator.models
             {
                 apiKey = value;
                 OnPropertyChanged();
+            }
+        }
+    }
+    
+    public class DeepLConfig : TranslateAPIConfig
+    {
+        [JsonIgnore]
+        public override Dictionary<string, string> SupportedLanguages { get; } = new()
+        {
+            { "zh-CN", "ZH-HANS" },
+            { "zh-TW", "ZH-HANT" },
+            { "en-US", "EN-US" },
+            { "en-GB", "EN-GB" },
+            { "ja-JP", "JA" },
+            { "ko-KR", "KO" },
+            { "fr-FR", "FR" },
+        };
+
+        private string apiKey = "";
+        private string apiUrl = "";
+
+        public string ApiKey
+        {
+            get => apiKey;
+            set
+            {
+                apiKey = value;
+                OnPropertyChanged("ApiKey");
+            }
+        }
+        public string ApiUrl
+        {
+            get => apiUrl;
+            set
+            {
+                apiUrl = value;
+                OnPropertyChanged("ApiUrl");
             }
         }
     }

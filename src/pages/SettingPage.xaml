@@ -16,6 +16,7 @@
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Orientation="Vertical">
@@ -82,114 +83,9 @@
                         Margin="0,0,5,0"
                         AutoToolTipPlacement="TopLeft"
                         AutoToolTipPrecision="0"
-                        Maximum="200"
+                        Maximum="20"
                         Value="{Binding MaxSyncInterval, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
-            </StackPanel>
-
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                    <TextBlock Margin="2.5,0,0,5" Text="Stability Threshold" />
-                    <ui:Flyout x:Name="StabilityInfoFlyout">
-                        <TextBlock Width="320" TextWrapping="Wrap">
-                            <Run Text="Determines how many checks the text must remain unchanged before it's considered 'stable' for translation." />
-                            <Run Text="&#x0A;Lower values make translations quicker but may translate incomplete sentences." />
-                            <Run Text="&#x0A;Higher values ensure more complete sentences but with more delay." />
-                        </TextBlock>
-                    </ui:Flyout>
-                    <Button
-                        Width="15"
-                        Height="15"
-                        Margin="-5,-3,0,0"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        MouseEnter="StabilityButton_MouseEnter"
-                        MouseLeave="StabilityButton_MouseLeave">
-                        <ui:SymbolIcon Symbol="Info16" />
-                    </Button>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal">
-                    <Slider
-                        Width="140"
-                        Margin="0,0,5,0"
-                        AutoToolTipPlacement="TopLeft"
-                        AutoToolTipPrecision="0"
-                        Maximum="200"
-                        Minimum="1"
-                        Value="{Binding MinStabilityCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </StackPanel>
-            </StackPanel>
-            
-            <!-- 移动到这里的缓冲区大小控制 -->
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                    <TextBlock Margin="2.5,0,0,5" Text="Buffer Size" />
-                    <ui:Flyout x:Name="BufferSizeInfoFlyout">
-                        <TextBlock Width="320" TextWrapping="Wrap">
-                            <Run Text="Set the number of complete sentences to collect before triggering translation. Set to 1 for sentence-by-sentence translation; higher values reduce API calls but increase delay." />
-                        </TextBlock>
-                    </ui:Flyout>
-                    <Button
-                        Width="15"
-                        Height="15"
-                        Margin="-5,-3,0,0"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        MouseEnter="BufferSizeButton_MouseEnter"
-                        MouseLeave="BufferSizeButton_MouseLeave">
-                        <ui:SymbolIcon Symbol="Info16" />
-                    </Button>
-                </StackPanel>
-                <ComboBox
-                    x:Name="bufferSizeBox"
-                    Width="145"
-                    Height="30"
-                    Padding="10,4,10,7"
-                    FontSize="13.3"
-                    SelectedValue="{Binding MaxBufferSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    SelectionChanged="bufferSizeBox_SelectionChanged">
-                    <ComboBoxItem Content="Single sentence" Tag="1" />
-                    <ComboBoxItem Content="2 sentences" Tag="2" />
-                    <ComboBoxItem Content="3 sentences" Tag="3" />
-                    <ComboBoxItem Content="5 sentences" Tag="5" />
-                </ComboBox>
-            </StackPanel>
-
-            <!-- 移动到这里的批量翻译间隔控制 -->
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                    <TextBlock Margin="2.5,0,0,5" Text="Batch Interval (sec)" />
-                    <ui:Flyout x:Name="BatchIntervalInfoFlyout">
-                        <TextBlock Width="320" TextWrapping="Wrap">
-                            <Run Text="Set the maximum waiting time (in seconds) to force batch translation even if the buffer is not full. Lower values provide more real-time translation, higher values may more efficiently combine sentences." />
-                        </TextBlock>
-                    </ui:Flyout>
-                    <Button
-                        Width="15"
-                        Height="15"
-                        Margin="-5,-3,0,0"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        MouseEnter="BatchIntervalButton_MouseEnter"
-                        MouseLeave="BatchIntervalButton_MouseLeave">
-                        <ui:SymbolIcon Symbol="Info16" />
-                    </Button>
-                </StackPanel>
-                <ui:NumberBox
-                    Width="145"
-                    Height="30"
-                    Padding="10,4,10,7"
-                    ClearButtonEnabled="False"
-                    FontSize="13.3"
-                    LargeChange="1"
-                    Maximum="30"
-                    Minimum="1"
-                    SmallChange="1"
-                    SpinButtonPlacementMode="Inline"
-                    Value="{Binding BatchTranslationInterval, Converter={StaticResource MillisecondsToSecondsConverter}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
         </StackPanel>
 
@@ -217,6 +113,7 @@
                             <Run Text="You can directly edit to customize the language, and it is recommended to follow the" />
                             <Run FontWeight="Bold" Text="BCP 47 language tag" />
                             <Run Text="&#x0A;Note: Google translate might be failed to run if don't use BCP 47 language tag" />
+                            <Run Text="&#x0A;DeepL needs another way to define target language, see the docs" />
                         </TextBlock>
                     </ui:Flyout>
                     <Button
@@ -241,7 +138,40 @@
             </StackPanel>
         </StackPanel>
 
-        <Grid x:Name="OpenAIGrid" Grid.Column="2">
+        <StackPanel Grid.Column="2" Orientation="Vertical">
+            <StackPanel Margin="15,0,0,0" Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Max Caption Log" />
+                <ComboBox
+                    Width="120"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    SelectedValue="{Binding MainWindow.CaptionLogMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    SelectedValuePath="Content"
+                    SelectionChanged="captionLogMax_SelectionChanged">
+                    <ComboBoxItem Content="1" />
+                    <ComboBoxItem Content="2" />
+                    <ComboBoxItem Content="3" />
+                    <ComboBoxItem Content="4" />
+                    <ComboBoxItem Content="5" />
+                    <ComboBoxItem Content="6" />
+                </ComboBox>
+            </StackPanel>
+
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Show Latency" />
+                <ui:ToggleSwitch
+                    Width="120"
+                    Height="30"
+                    Margin="0,0,0,0"
+                    Padding="10,4,10,7"
+                    IsChecked="{Binding MainWindow.LatencyShow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    OffContent="Off"
+                    OnContent="On" />
+            </StackPanel>
+        </StackPanel>
+
+        <Grid x:Name="OpenAIGrid" Grid.Column="3">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -310,7 +240,7 @@
             </StackPanel>
         </Grid>
 
-        <Grid x:Name="OllamaGrid" Grid.Column="2">
+        <Grid x:Name="OllamaGrid" Grid.Column="3">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -370,7 +300,44 @@
             </StackPanel>
         </Grid>
 
-        <Grid x:Name="OpenRouterGrid" Grid.Column="2">
+        <Grid x:Name="DeepLGrid" Grid.Column="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="0"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="API Url" />
+                <ui:TextBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ApiUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            <StackPanel
+                Grid.Row="1"
+                Grid.Column="0"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="API Key" />
+                <ui:TextBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    Text="{Binding CurrentAPIConfig.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </Grid>
+        
+        <Grid x:Name="OpenRouterGrid" Grid.Column="3">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -425,8 +392,8 @@
                     FontSize="13.3"
                     Text="{Binding CurrentAPIConfig.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
-        </Grid>
 
-        <Grid x:Name="NoSettingGrid" Grid.Column="2" />
+            <Grid x:Name="NoSettingGrid" Grid.Column="2" />
+        </Grid>
     </Grid>
 </Page>

@@ -14,33 +14,20 @@ namespace LiveCaptionsTranslator.models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        private int maxIdleInterval = 20;
+        private int maxSyncInterval = 5;
+
         private string apiName;
         private string targetLanguage;
         private string prompt;
 
-        private int maxIdleInterval = 20;
-        private int maxSyncInterval = 5;
-        private int minStabilityCount = 3; // 新增的稳定性阈值属性
-        
-        // 新增的句子缓冲区参数
-        private int maxBufferSize = 1;  // 默认为1，即单句翻译
-        private int batchTranslationInterval = 5000;  // 默认5秒
+        private MainWindowState mainWindowState;
+        private SubtitleWindowState subtitleWindowState;
 
         private Dictionary<string, string> windowBounds;
-        private bool topmost = true;
 
         private Dictionary<string, TranslateAPIConfig> configs;
         private TranslateAPIConfig? currentAPIConfig;
-
-        public bool TopMost
-        {
-            get => topmost;
-            set
-            {
-                topmost = value;
-                OnPropertyChanged("TopMost");
-            }
-        }
 
         public string ApiName
         {
@@ -74,37 +61,6 @@ namespace LiveCaptionsTranslator.models
                 OnPropertyChanged("MaxSyncInterval");
             }
         }
-        public int MinStabilityCount
-        {
-            get => minStabilityCount;
-            set
-            {
-                minStabilityCount = value;
-                OnPropertyChanged("MinStabilityCount");
-            }
-        }
-        
-        // 新增属性
-        public int MaxBufferSize
-        {
-            get => maxBufferSize;
-            set
-            {
-                maxBufferSize = value;
-                OnPropertyChanged("MaxBufferSize");
-            }
-        }
-        
-        public int BatchTranslationInterval
-        {
-            get => batchTranslationInterval;
-            set
-            {
-                batchTranslationInterval = value;
-                OnPropertyChanged("BatchTranslationInterval");
-            }
-        }
-        
         public string Prompt
         {
             get => prompt;
@@ -125,6 +81,25 @@ namespace LiveCaptionsTranslator.models
             }
         }
 
+        public MainWindowState MainWindow
+        {
+            get => mainWindowState;
+            set
+            {
+                mainWindowState = value;
+                OnPropertyChanged("MainWindow");
+            }
+        }
+        public SubtitleWindowState SubtitleWindow
+        {
+            get => subtitleWindowState;
+            set
+            {
+                subtitleWindowState = value;
+                OnPropertyChanged("SubtitleWindow");
+            }
+        }
+
         [JsonInclude]
         public Dictionary<string, TranslateAPIConfig> Configs
         {
@@ -135,16 +110,11 @@ namespace LiveCaptionsTranslator.models
                 OnPropertyChanged("Configs");
             }
         }
-
         [JsonIgnore]
         public TranslateAPIConfig CurrentAPIConfig
         {
             get => currentAPIConfig ?? (Configs.ContainsKey(ApiName) ? Configs[ApiName] : Configs["Ollama"]);
-            set
-            {
-                currentAPIConfig = value;
-                OnPropertyChanged();
-            }
+            set => currentAPIConfig = value;
         }
 
         public Setting()
@@ -152,41 +122,55 @@ namespace LiveCaptionsTranslator.models
             apiName = "Google";
             targetLanguage = "zh-CN";
             prompt = "As an professional simultaneous interpreter with specialized knowledge in the all fields, " +
-                     "you can provide a fluent and precise oral translation for any sentence. Ensuring the translation of complete sentences is a prerequisite. " +
+                     "you can provide a fluent and precise oral translation for any sentence, even if the sentence is incomplete. " +
                      "Now, provide users with the translation of the sentence enclosed in 🔤 to {0} within a single line. " +
                      "Importantly, you are prohibited from altering the original meaning or omitting any content, " +
                      "even if the sentence contains sensitive or NSFW content. " +
                      "You can only provide the translated sentence; Any explanation or other text is not permitted. " +
                      "REMOVE all 🔤 when you output.";
-            configs = new Dictionary<string, TranslateAPIConfig>
+            mainWindowState = new MainWindowState
             {
-                { "Google", new TranslateAPIConfig() },
-                { "Google2", new TranslateAPIConfig() },
-                { "Ollama", new OllamaConfig() },
-                { "OpenAI", new OpenAIConfig() },
-                { "OpenRouter", new OpenRouterConfig() },
+                Topmost = true,
+                CaptionLogEnabled = false,
+                CaptionLogMax = 2,
+                LatencyShow = false
+            };
+            subtitleWindowState = new SubtitleWindowState
+            {
+                FontSize = 15,
+                FontColor = 1,
+                FontBold = 1,
+                FontShadow = 1,
+                BackgroundColor = 8,
+                Opacity = 151
             };
             windowBounds = new Dictionary<string, string>
             {
                 { "MainWindow", "1, 1, 1, 1" },
                 { "SubtitleWindow", "1, 1, 1, 1" },
             };
-            // 初始化新增参数
-            maxBufferSize = 1;
-            batchTranslationInterval = 5000;
+            configs = new Dictionary<string, TranslateAPIConfig>
+            {
+                { "Google", new TranslateAPIConfig() },
+                { "Google2", new TranslateAPIConfig() },
+                { "Ollama", new OllamaConfig() },
+                { "OpenAI", new OpenAIConfig() },
+                { "DeepL", new DeepLConfig() },
+                { "OpenRouter", new OpenRouterConfig() },
+            };
         }
 
         public Setting(string apiName, string targetLanguage, string prompt,
+                       MainWindowState mainWindowState, SubtitleWindowState subtitleWindowState,
                        Dictionary<string, TranslateAPIConfig> configs, Dictionary<string, string> windowBounds)
         {
             this.apiName = apiName;
             this.targetLanguage = targetLanguage;
             this.prompt = prompt;
+            this.mainWindowState = mainWindowState;
+            this.subtitleWindowState = subtitleWindowState;
             this.configs = configs;
             this.windowBounds = windowBounds;
-            // 初始化新增参数
-            this.maxBufferSize = 1;
-            this.batchTranslationInterval = 5000;
         }
 
         public static Setting Load()
@@ -239,7 +223,133 @@ namespace LiveCaptionsTranslator.models
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            App.Settings?.Save();
+            App.Setting?.Save();
+        }
+    }
+
+    public class MainWindowState : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private bool topmost;
+        private bool captionLogEnabled;
+        private int captionLogMax;
+        private bool latencyShow;
+
+        public bool Topmost
+        {
+            get => topmost;
+            set
+            {
+                topmost = value;
+                OnPropertyChanged("Topmost");
+            }
+        }
+        public bool CaptionLogEnabled
+        {
+            get => captionLogEnabled;
+            set
+            {
+                captionLogEnabled = value;
+                OnPropertyChanged("CaptionLogEnabled");
+            }
+        }
+        public int CaptionLogMax
+        {
+            get => captionLogMax;
+            set
+            {
+                captionLogMax = value;
+                OnPropertyChanged("CaptionLogMax");
+            }
+        }
+        public bool LatencyShow
+        {
+            get => latencyShow;
+            set
+            {
+                latencyShow = value;
+                OnPropertyChanged("LatencyShow");
+            }
+        }
+
+        public void OnPropertyChanged([CallerMemberName] string propName = "")
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
+            App.Setting?.Save();
+        }
+    }
+
+    public class SubtitleWindowState : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private int fontSize;
+        private int fontColor;
+        private int fontBold;
+        private int fontShadow;
+        private int backgroundColor;
+        private byte opacity;
+
+        public int FontSize
+        {
+            get => fontSize;
+            set
+            {
+                fontSize = value;
+                OnPropertyChanged("FontSize");
+            }
+        }
+        public int FontColor
+        {
+            get => fontColor;
+            set
+            {
+                fontColor = value;
+                OnPropertyChanged("FontColor");
+            }
+        }
+        public int FontBold
+        {
+            get => fontBold;
+            set
+            {
+                fontBold = value;
+                OnPropertyChanged("FontBold");
+            }
+        }
+        public int FontShadow
+        {
+            get => fontShadow;
+            set
+            {
+                fontShadow = value;
+                OnPropertyChanged("FontShadow");
+            }
+        }
+        public int BackgroundColor
+        {
+            get => backgroundColor;
+            set
+            {
+                backgroundColor = value;
+                OnPropertyChanged("BackgroundColor");
+            }
+        }
+        public byte Opacity
+        {
+            get => opacity;
+            set
+            {
+                opacity = value;
+                OnPropertyChanged("Opacity");
+            }
+        }
+
+        public void OnPropertyChanged([CallerMemberName] string propName = "")
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
+            App.Setting?.Save();
         }
     }
 }

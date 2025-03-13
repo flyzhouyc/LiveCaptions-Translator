@@ -13,30 +13,16 @@ namespace LiveCaptionsTranslator
         {
             InitializeComponent();
             ApplicationThemeManager.ApplySystemTheme();
-            DataContext = App.Settings;
+            DataContext = App.Setting;
 
-            translateAPIBox.ItemsSource = App.Settings.Configs.Keys;
+            translateAPIBox.ItemsSource = App.Setting.Configs.Keys;
             translateAPIBox.SelectedIndex = 0;
             LoadAPISetting();
 
             targetLangBox.SelectionChanged += targetLangBox_SelectionChanged;
             targetLangBox.LostFocus += targetLangBox_LostFocus;
-            // 初始化缓冲区大小下拉框
-            InitializeBufferSizeBox();
         }
-        // 新增方法：初始化缓冲区大小下拉框
-        private void InitializeBufferSizeBox()
-        {
-            int maxBufferSize = App.Settings.MaxBufferSize;
-            foreach (ComboBoxItem item in bufferSizeBox.Items)
-            {
-                if (item.Tag != null && int.Parse(item.Tag.ToString()) == maxBufferSize)
-                {
-                    bufferSizeBox.SelectedItem = item;
-                    break;
-                }
-            }
-        }
+
         private void Button_LiveCaptions(object sender, RoutedEventArgs e)
         {
             if (App.Window == null)
@@ -67,45 +53,13 @@ namespace LiveCaptionsTranslator
         {
             if (targetLangBox.SelectedItem != null)
             {
-                App.Settings.TargetLanguage = targetLangBox.SelectedItem.ToString();
+                App.Setting.TargetLanguage = targetLangBox.SelectedItem.ToString();
             }
         }
 
         private void targetLangBox_LostFocus(object sender, RoutedEventArgs e)
         {
-            App.Settings.TargetLanguage = targetLangBox.Text;
-        }
-        // 新增事件处理方法
-        private void BufferSizeButton_MouseEnter(object sender, MouseEventArgs e)
-        {
-            BufferSizeInfoFlyout.Show();
-        }
-
-        private void BufferSizeButton_MouseLeave(object sender, MouseEventArgs e)
-        {
-            BufferSizeInfoFlyout.Hide();
-        }
-
-        private void BatchIntervalButton_MouseEnter(object sender, MouseEventArgs e)
-        {
-            BatchIntervalInfoFlyout.Show();
-        }
-
-        private void BatchIntervalButton_MouseLeave(object sender, MouseEventArgs e)
-        {
-            BatchIntervalInfoFlyout.Hide();
-        }
-
-        private void bufferSizeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (e.AddedItems.Count > 0 && e.AddedItems[0] is ComboBoxItem item && item.Tag != null)
-            {
-                string tag = item.Tag.ToString();
-                if (int.TryParse(tag, out int value))
-                {
-                    App.Settings.MaxBufferSize = value;
-                }
-            }
+            App.Setting.TargetLanguage = targetLangBox.Text;
         }
 
         private void TargetLangButton_MouseEnter(object sender, MouseEventArgs e)
@@ -137,21 +91,18 @@ namespace LiveCaptionsTranslator
         {
             FrequencyInfoFlyout.Hide();
         }
-        
-        private void StabilityButton_MouseEnter(object sender, MouseEventArgs e)
-        {
-            StabilityInfoFlyout.Show();
-        }
 
-        private void StabilityButton_MouseLeave(object sender, MouseEventArgs e)
+        private void captionLogMax_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            StabilityInfoFlyout.Hide();
+            while (App.Caption.LogCards.Count > App.Setting.MainWindow.CaptionLogMax)
+                App.Caption.LogCards.Dequeue();
+            App.Caption.OnPropertyChanged("DisplayLogCards");
         }
 
         private void LoadAPISetting()
         {
-            string targetLang = App.Settings.TargetLanguage;
-            var supportedLanguages = App.Settings.CurrentAPIConfig.SupportedLanguages;
+            string targetLang = App.Setting.TargetLanguage;
+            var supportedLanguages = App.Setting.CurrentAPIConfig.SupportedLanguages;
             targetLangBox.ItemsSource = supportedLanguages.Keys;
 
             // Add custom target language to ComboBox
@@ -166,7 +117,7 @@ namespace LiveCaptionsTranslator
                 if (element is Grid childGrid)
                     childGrid.Visibility = Visibility.Collapsed;
             }
-            var settingGrid = FindName($"{App.Settings.ApiName}Grid") as Grid ?? FindName($"NoSettingGrid") as Grid;
+            var settingGrid = FindName($"{App.Setting.ApiName}Grid") as Grid ?? FindName($"NoSettingGrid") as Grid;
             settingGrid.Visibility = Visibility.Visible;
         }
     }

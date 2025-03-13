@@ -8,13 +8,18 @@ namespace LiveCaptionsTranslator
 {
     public partial class CaptionPage : Page
     {
+        public static CaptionPage? Instance { get; set; } = null;
+
         public CaptionPage()
         {
             InitializeComponent();
-            DataContext = App.Captions;
+            DataContext = App.Caption;
+            Instance = this;
 
-            Loaded += (s, e) => App.Captions.PropertyChanged += TranslatedChanged;
-            Unloaded += (s, e) => App.Captions.PropertyChanged -= TranslatedChanged;
+            Loaded += (s, e) => App.Caption.PropertyChanged += TranslatedChanged;
+            Unloaded += (s, e) => App.Caption.PropertyChanged -= TranslatedChanged;
+
+            CollapseTranslatedCaption(App.Setting.MainWindow.CaptionLogEnabled);
         }
 
         private async void TextBlock_MouseLeftButtonDown(object sender, RoutedEventArgs e)
@@ -37,9 +42,9 @@ namespace LiveCaptionsTranslator
 
         private void TranslatedChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(App.Captions.DisplayTranslatedCaption))
+            if (e.PropertyName == nameof(App.Caption.DisplayTranslatedCaption))
             {
-                if (Encoding.UTF8.GetByteCount(App.Captions.DisplayTranslatedCaption) >= 160)
+                if (Encoding.UTF8.GetByteCount(App.Caption.DisplayTranslatedCaption) >= 160)
                 {
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
@@ -53,6 +58,22 @@ namespace LiveCaptionsTranslator
                         this.TranslatedCaption.FontSize = 18;
                     }), DispatcherPriority.Background);
                 }
+            }
+        }
+
+        public void CollapseTranslatedCaption(bool collapse)
+        {
+            var converter = new GridLengthConverter();
+
+            if (collapse)
+            {
+                TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("Auto");
+                CaptionLogCard.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("*");
+                CaptionLogCard.Visibility = Visibility.Collapsed;
             }
         }
     }

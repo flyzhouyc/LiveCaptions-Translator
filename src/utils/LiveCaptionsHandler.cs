@@ -76,32 +76,42 @@ namespace LiveCaptionsTranslator.utils
                 throw new Exception("Failed to fix LiveCaptions!");
         }
 
+        public static string GetCaptions(AutomationElement window)
+        {
+            var captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
+            if (captionsTextBlock == null)
+                return string.Empty;
+            return captionsTextBlock.Current.Name;
+        }
+
         private static AutomationElement FindWindowByPId(int processId)
         {
             var condition = new PropertyCondition(AutomationElement.ProcessIdProperty, processId);
             return AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
         }
 
-        public static AutomationElement? FindElementByAId(AutomationElement window, string automationId)
+        public static AutomationElement? FindElementByAId(
+            AutomationElement window, 
+            string automationId,
+            CancellationToken cancellationToken = default)
         {
-            var treeWalker = TreeWalker.RawViewWalker;
-            var stack = new Stack<AutomationElement>();
-            stack.Push(window);
+            if (window == null) return null;
 
-            while (stack.Count > 0)
+            try
             {
-                var element = stack.Pop();
-                if (element.Current.AutomationId.CompareTo(automationId) == 0)
-                    return element;
-
-                var child = treeWalker.GetFirstChild(element);
-                while (child != null)
-                {
-                    stack.Push(child);
-                    child = treeWalker.GetNextSibling(child);
-                }
+                PropertyCondition condition = new PropertyCondition(
+                    AutomationElement.AutomationIdProperty,
+                    automationId);
+                return window.FindFirst(TreeScope.Descendants, condition);
             }
-            return null;
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         public static void PrintAllElementsAId(AutomationElement window)

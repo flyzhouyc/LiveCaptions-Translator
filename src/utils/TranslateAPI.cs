@@ -9,32 +9,41 @@ namespace LiveCaptionsTranslator.utils
 {
     public static class TranslateAPI
     {
-        public static readonly Dictionary<string, Func<string, CancellationToken, Task<string>>> 
-            TRANSLATE_FUNCS = new()
+        /*
+         * The key of this field is used as the content for `translateAPIBox` in the `SettingPage`.
+         * If you'd like to add a new API, please insert the key-value pair here.
+         */
+        public static readonly Dictionary<string, Func<string, CancellationToken, Task<string>>>
+            TRANSLATE_FUNCTIONS = new()
         {
             { "Google", Google },
             { "Google2", Google2 },
             { "Ollama", Ollama },
             { "OpenAI", OpenAI },
+            { "DeepL", DeepL },
             { "OpenRouter", OpenRouter },
         };
-        public static Func<string, CancellationToken, Task<string>> TranslateFunc
+
+        public static Func<string, CancellationToken, Task<string>> TranslateFunction
         {
-            get => TRANSLATE_FUNCS[App.Settings.ApiName];
+            get => TRANSLATE_FUNCTIONS[App.Setting.ApiName];
         }
         public static string Prompt
         {
-            get => App.Settings.Prompt;
+            get => App.Setting.Prompt;
         }
 
-        private static readonly HttpClient client = new HttpClient() { Timeout = TimeSpan.FromSeconds(5) };
+        private static readonly HttpClient client = new HttpClient()
+        {
+            Timeout = TimeSpan.FromSeconds(5)
+        };
 
         public static async Task<string> OpenAI(string text, CancellationToken token = default)
         {
-            var config = App.Settings.CurrentAPIConfig as OpenAIConfig;
-            string language = config.SupportedLanguages.TryGetValue(App.Settings.TargetLanguage, out var langValue) 
+            var config = App.Setting.CurrentAPIConfig as OpenAIConfig;
+            string language = config.SupportedLanguages.TryGetValue(App.Setting.TargetLanguage, out var langValue) 
                 ? langValue 
-                : App.Settings.TargetLanguage; 
+                : App.Setting.TargetLanguage; 
             var requestData = new
             {
                 model = config?.ModelName,
@@ -56,10 +65,12 @@ namespace LiveCaptionsTranslator.utils
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(config?.ApiUrl, content, token);
+                response = await client.PostAsync(TextUtil.NormalizeUrl(config?.ApiUrl), content, token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                if (ex.Message.StartsWith("The request"))
+                    return $"[Translation Failed] {ex.Message}";
                 return string.Empty;
             }
             catch (Exception ex)
@@ -79,11 +90,11 @@ namespace LiveCaptionsTranslator.utils
 
         public static async Task<string> Ollama(string text, CancellationToken token = default)
         {
-            var config = App.Settings?.CurrentAPIConfig as OllamaConfig;
+            var config = App.Setting?.CurrentAPIConfig as OllamaConfig;
             var apiUrl = $"http://localhost:{config.Port}/api/chat";
-            string language = config.SupportedLanguages.TryGetValue(App.Settings.TargetLanguage, out var langValue) 
+            string language = config.SupportedLanguages.TryGetValue(App.Setting.TargetLanguage, out var langValue) 
                 ? langValue 
-                : App.Settings.TargetLanguage; 
+                : App.Setting.TargetLanguage; 
 
             var requestData = new
             {
@@ -107,8 +118,10 @@ namespace LiveCaptionsTranslator.utils
             {
                 response = await client.PostAsync(apiUrl, content, token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                if (ex.Message.StartsWith("The request"))
+                    return $"[Translation Failed] {ex.Message}";
                 return string.Empty;
             }
             catch (Exception ex)
@@ -128,7 +141,7 @@ namespace LiveCaptionsTranslator.utils
 
         private static async Task<string> Google(string text, CancellationToken token = default)
         {
-            var language = App.Settings?.TargetLanguage;
+            var language = App.Setting?.TargetLanguage;
 
             string encodedText = Uri.EscapeDataString(text);
             var url = $"https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl={language}&q={encodedText}";
@@ -138,8 +151,10 @@ namespace LiveCaptionsTranslator.utils
             {
                 response = await client.GetAsync(url, token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                if (ex.Message.StartsWith("The request"))
+                    return $"[Translation Failed] {ex.Message}";
                 return string.Empty;
             }
             catch (Exception ex)
@@ -163,7 +178,7 @@ namespace LiveCaptionsTranslator.utils
         private static async Task<string> Google2(string text, CancellationToken token = default)
         {
             string apiKey = "AIzaSyA6EEtrDCfBkHV8uU2lgGY-N383ZgAOo7Y";
-            var language = App.Settings?.TargetLanguage;
+            var language = App.Setting?.TargetLanguage;
             string strategy = "2";
 
             string encodedText = Uri.EscapeDataString(text);
@@ -181,8 +196,10 @@ namespace LiveCaptionsTranslator.utils
             {
                 response = await client.SendAsync(request, token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                if (ex.Message.StartsWith("The request"))
+                    return $"[Translation Failed] {ex.Message}";
                 return string.Empty;
             }
             catch (Exception ex)
@@ -211,8 +228,8 @@ namespace LiveCaptionsTranslator.utils
         
         public static async Task<string> OpenRouter(string text, CancellationToken token = default)
         {
-            var config = App.Settings.CurrentAPIConfig as OpenRouterConfig;
-            var language = config?.SupportedLanguages[App.Settings.TargetLanguage];
+            var config = App.Setting.CurrentAPIConfig as OpenRouterConfig;
+            var language = config?.SupportedLanguages[App.Setting.TargetLanguage];
             var apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
             var requestData = new
@@ -243,8 +260,10 @@ namespace LiveCaptionsTranslator.utils
             {
                 response = await client.SendAsync(request, token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                if (ex.Message.StartsWith("The request"))
+                    return $"[Translation Failed] {ex.Message}";
                 return string.Empty;
             }
             catch (Exception ex)
@@ -263,6 +282,62 @@ namespace LiveCaptionsTranslator.utils
             }
             else
                 return $"[Translation Failed] HTTP Error - {response.StatusCode}";
+        }
+        
+        public static async Task<string> DeepL(string text, CancellationToken token = default)
+        {
+            var config = App.Setting.CurrentAPIConfig as DeepLConfig;
+            string language = config.SupportedLanguages.TryGetValue(App.Setting.TargetLanguage, out var langValue) 
+                ? langValue 
+                : App.Setting.TargetLanguage;
+
+            var requestData = new
+            {
+                text = new[] { text },
+                target_lang = language
+            };
+
+            string jsonContent = JsonSerializer.Serialize(requestData);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+            client.DefaultRequestHeaders.Clear();
+            client.DefaultRequestHeaders.Add("Authorization", $"DeepL-Auth-Key {config?.ApiKey}");
+
+            string apiUrl = string.IsNullOrEmpty(config?.ApiUrl) ? 
+                "https://api.deepl.com/v2/translate" : TextUtil.NormalizeUrl(config.ApiUrl);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await client.PostAsync(apiUrl, content, token);
+            }
+            catch (OperationCanceledException ex)
+            {
+                if (ex.Message.StartsWith("The request"))
+                    return $"[Translation Failed] {ex.Message}";
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                return $"[Translation Failed] {ex.Message}";
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                string responseString = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseString);
+        
+                if (doc.RootElement.TryGetProperty("translations", out var translations) &&
+                    translations.ValueKind == JsonValueKind.Array && translations.GetArrayLength() > 0)
+                {
+                    return translations[0].GetProperty("text").GetString();
+                }
+                return "[Translation Failed] No valid feedback";
+            }
+            else
+            {
+                return $"[Translation Failed] HTTP Error - {response.StatusCode}";
+            }
         }
     }
 
