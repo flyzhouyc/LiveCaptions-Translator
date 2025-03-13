@@ -60,25 +60,42 @@ namespace LiveCaptionsTranslator.models
                 tasks.RemoveAt(index);
             }
 
-            // 更新翻译结果 - 修改日志处理逻辑
+            // 更新翻译结果
             if (!translationTask.CTS.IsCancellationRequested)
             {
                 string result = translationTask.Task.Result;
-                
-                // 始终更新空结果，但确保非空结果才更新显示内容
                 translatedText = result;
                 
-                // 无论结果是否为空，都记录日志（与原代码保持一致）
+                // 获取覆写状态
                 bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
                 
-                // 记录翻译并通知UI更新
-                await Translator.Log(translationTask.OriginalText, result, isOverwrite);
-                
-                // 先日志记录，再添加到显示卡片
-                if (!isOverwrite)
+                // 直接添加到日志卡片 - 重要修复：无条件添加日志卡片
+                var entry = new TranslationHistoryEntry
                 {
-                    await App.Caption.AddLogCard();
+                    Timestamp = DateTime.Now.ToString("MM/dd HH:mm"),
+                    TimestampFull = DateTime.Now.ToString("MM/dd/yy, HH:mm:ss"),
+                    SourceText = translationTask.OriginalText,
+                    TranslatedText = string.IsNullOrEmpty(result) ? "[No translation result]" : result,
+                    TargetLanguage = App.Setting?.TargetLanguage ?? "N/A",
+                    ApiUsed = App.Setting?.ApiName ?? "N/A"
+                };
+                
+                // 先添加到本地显示
+                lock (App.Caption._logLock)
+                {
+                    if (App.Caption.LogCards.Count >= App.Setting?.MainWindow.CaptionLogMax)
+                        App.Caption.LogCards.Dequeue();
+                        
+                    App.Caption.LogCards.Enqueue(entry);
+                    
+                    // 直接在主线程上触发属性更改通知
+                    App.Current.Dispatcher.BeginInvoke(() => {
+                        App.Caption.OnPropertyChanged("DisplayLogCards");
+                    });
                 }
+                
+                // 再保存到数据库
+                await Translator.Log(translationTask.OriginalText, result, isOverwrite);
             }
         }
         

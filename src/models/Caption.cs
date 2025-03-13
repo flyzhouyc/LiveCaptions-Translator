@@ -18,7 +18,7 @@ namespace LiveCaptionsTranslator.models
         // 添加锁对象
         private readonly object _syncLock = new object();
         private readonly object _translateLock = new object();
-        private readonly object _logLock = new object();
+        internal readonly object _logLock = new object();
 
         public string OriginalCaption { get; set; } = "";
         public string TranslatedCaption { get; set; } = "";
@@ -296,8 +296,7 @@ namespace LiveCaptionsTranslator.models
             }
             
             // 确保在UI线程上更新属性
-            await Task.Run(() => 
-            {
+            App.Current.Dispatcher.BeginInvoke(() => {
                 OnPropertyChanged("DisplayLogCards");
             });
         }

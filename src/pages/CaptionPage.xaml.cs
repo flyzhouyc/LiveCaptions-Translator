@@ -21,8 +21,40 @@ namespace LiveCaptionsTranslator
                 
                 // 确保日志显示状态正确
                 CollapseTranslatedCaption(App.Setting.MainWindow.CaptionLogEnabled);
+                await InitializeLogCards();
             };
             Unloaded += (s, e) => App.Caption.PropertyChanged -= TranslatedChanged;
+        }
+        private async Task InitializeLogCards()
+        {
+            try
+            {
+                // 加载最近的记录
+                int logCount = App.Setting?.MainWindow.CaptionLogMax ?? 2;
+                var recentLogs = await SQLiteHistoryLogger.LoadRecentEntries(logCount);
+                
+                if (recentLogs.Count > 0)
+                {
+                    lock (App.Caption._logLock)
+                    {
+                        // 清空现有记录
+                        while (App.Caption.LogCards.Count > 0)
+                            App.Caption.LogCards.Dequeue();
+                            
+                        // 添加从最旧到最新的记录
+                        foreach (var log in recentLogs)
+                        {
+                            App.Caption.LogCards.Enqueue(log);
+                        }
+                    }
+                    
+                    App.Caption.OnPropertyChanged("DisplayLogCards");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"初始化日志记录失败: {ex.Message}");
+            }
         }
 
         private async void TextBlock_MouseLeftButtonDown(object sender, RoutedEventArgs e)

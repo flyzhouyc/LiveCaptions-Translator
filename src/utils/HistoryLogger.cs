@@ -232,6 +232,38 @@ namespace LiveCaptionsTranslator.utils
 
             await File.WriteAllTextAsync(filePath, csv.ToString());
         }
+        public static async Task<List<TranslationHistoryEntry>> LoadRecentEntries(int count, CancellationToken token = default)
+        {
+            var entries = new List<TranslationHistoryEntry>();
+            
+            using (var command = new SqliteCommand(@$"
+                SELECT Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed
+                FROM TranslationHistory
+                ORDER BY Id DESC
+                LIMIT {count}", GetConnection()))
+            using (var reader = await command.ExecuteReaderAsync(token))
+            {
+                while (await reader.ReadAsync(token))
+                {
+                    string unixTime = reader.GetString(reader.GetOrdinal("Timestamp"));
+                    DateTime localTime = DateTimeOffset.FromUnixTimeSeconds((long)Convert.ToDouble(unixTime)).LocalDateTime;
+                    
+                    entries.Add(new TranslationHistoryEntry
+                    {
+                        Timestamp = localTime.ToString("MM/dd HH:mm"),
+                        TimestampFull = localTime.ToString("MM/dd/yy, HH:mm:ss"),
+                        SourceText = reader.GetString(reader.GetOrdinal("SourceText")),
+                        TranslatedText = reader.GetString(reader.GetOrdinal("TranslatedText")),
+                        TargetLanguage = reader.GetString(reader.GetOrdinal("TargetLanguage")),
+                        ApiUsed = reader.GetString(reader.GetOrdinal("ApiUsed"))
+                    });
+                }
+            }
+            
+            // 反转列表使其按时间顺序排列
+            entries.Reverse();
+            return entries;
+        }
 
         // DEPRECATED
         private static async Task MigrateOldTimestampFormat()
