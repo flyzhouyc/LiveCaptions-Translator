@@ -78,10 +78,55 @@ namespace LiveCaptionsTranslator.utils
 
         public static string GetCaptions(AutomationElement window)
         {
-            var captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
-            if (captionsTextBlock == null)
-                return string.Empty;
-            return captionsTextBlock.Current.Name;
+            int retryCount = 0;
+            int maxRetries = 3;
+            
+            while (retryCount < maxRetries)
+            {
+                try
+                {
+                    var captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
+                    if (captionsTextBlock == null)
+                    {
+                        retryCount++;
+                        Thread.Sleep(50); // 短暂暂停后重试
+                        continue;
+                    }
+                    return captionsTextBlock.Current.Name;
+                }
+                catch (Exception)
+                {
+                    retryCount++;
+                    if (retryCount >= maxRetries)
+                        return string.Empty;
+                    Thread.Sleep(50);
+                }
+            }
+            return string.Empty;
+        }
+        // 添加一个方法检查LiveCaptions窗口状态
+
+        // 添加尝试恢复LiveCaptions的方法
+        public static bool TryRestoreLiveCaptions(ref AutomationElement window)
+        {
+            try
+            {
+                if (window != null)
+                {
+                    try { KillLiveCaptions(window); } 
+                    catch { /* 忽略错误 */ }
+                }
+                
+                window = LaunchLiveCaptions();
+                FixLiveCaptions(window);
+                HideLiveCaptions(window);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"恢复LiveCaptions失败: {ex.Message}");
+                return false;
+            }
         }
 
         private static AutomationElement FindWindowByPId(int processId)

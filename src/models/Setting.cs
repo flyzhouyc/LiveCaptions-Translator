@@ -14,8 +14,8 @@ namespace LiveCaptionsTranslator.models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private int maxIdleInterval = 20;
-        private int maxSyncInterval = 5;
+        private int maxIdleInterval = 15; // 从20降为15
+        private int maxSyncInterval = 3;  // 从5降为3
 
         private string apiName;
         private string targetLanguage;

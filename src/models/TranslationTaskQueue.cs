@@ -8,6 +8,7 @@ namespace LiveCaptionsTranslator.models
 
         private readonly List<TranslationTask> tasks;
         private string translatedText;
+        private readonly int _maxRetainedTasks = 2; // 最多保留的任务数，避免所有任务都被取消
 
         public string Output
         {
@@ -27,10 +28,14 @@ namespace LiveCaptionsTranslator.models
             {
                 tasks.Add(newTranslationTask);
             }
-            // Run `OnTaskCompleted` in a new thread.
+            // 运行OnTaskCompleted在新线程中
             newTranslationTask.Task.ContinueWith(
-                task => OnTaskCompleted(newTranslationTask),
-                TaskContinuationOptions.OnlyOnRanToCompletion
+                task => {
+                    if (task.IsCompletedSuccessfully)
+                        OnTaskCompleted(newTranslationTask);
+                    else if (task.IsFaulted && task.Exception != null)
+                        HandleTaskException(newTranslationTask, task.Exception);
+                }
             );
         }
 
@@ -39,17 +44,50 @@ namespace LiveCaptionsTranslator.models
             lock (_lock)
             {
                 var index = tasks.IndexOf(translationTask);
-                for (int i = 0; i < index; i++)
-                    tasks[i].CTS.Cancel();
-                for (int i = index; i >= 0; i--)
-                    tasks.RemoveAt(i);
+                if (index < 0) return; // 任务可能已被移除
+                
+                // 只取消较旧的任务，保留最近的几个任务避免全部丢失
+                int tasksToKeep = Math.Min(_maxRetainedTasks, tasks.Count);
+                int cancelThreshold = tasks.Count - tasksToKeep;
+                
+                // 取消旧任务
+                for (int i = 0; i < Math.Min(cancelThreshold, index); i++)
+                {
+                    try { tasks[i].CTS.Cancel(); } catch { /* 忽略取消错误 */ }
+                }
+                
+                // 移除当前任务
+                tasks.RemoveAt(index);
             }
-            translatedText = translationTask.Task.Result;
-            // Log after translation.
-            bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
-            if (!isOverwrite)
-                await App.Caption.AddLogCard();
-            await Translator.Log(translationTask.OriginalText, translatedText, isOverwrite);
+
+            // 更新翻译结果
+            if (!translationTask.CTS.IsCancellationRequested)
+            {
+                string result = translationTask.Task.Result;
+                // 只有在结果非空时才更新显示
+                if (!string.IsNullOrEmpty(result))
+                {
+                    translatedText = result;
+                    // 日志记录
+                    bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
+                    if (!isOverwrite)
+                        await App.Caption.AddLogCard();
+                    await Translator.Log(translationTask.OriginalText, translatedText, isOverwrite);
+                }
+            }
+        }
+        
+        private void HandleTaskException(TranslationTask task, AggregateException exception)
+        {
+            // 记录异常但不崩溃
+            Console.WriteLine($"翻译任务异常: {exception.InnerException?.Message}");
+            
+            // 如果因为取消而失败，不做特殊处理
+            if (exception.InnerException is OperationCanceledException)
+                return;
+                
+            // 对于其他异常，设置一个错误消息
+            translatedText = $"[Translation Error: {exception.InnerException?.Message}]";
         }
     }
 

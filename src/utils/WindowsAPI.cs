@@ -37,6 +37,8 @@ namespace LiveCaptionsTranslator.utils
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
+        [DllImport("user32.dll")]
+        public static extern bool IsWindow(nint hWnd);
     }
 
     [StructLayout(LayoutKind.Sequential)]
