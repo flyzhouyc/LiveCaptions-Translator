@@ -102,8 +102,10 @@ namespace LiveCaptionsTranslator.models
                         lastRecoveryAttempt = DateTime.Now;
                         DisplayTranslatedCaption = "[WARNING] LiveCaptions connection lost, restarting...";
                         
-                        if (LiveCaptionsHandler.TryRestoreLiveCaptions(ref App.Window))
+                        var newWindow = LiveCaptionsHandler.TryRestoreLiveCaptions(App.Window);
+                        if (newWindow != null)
                         {
+                            App.Window = newWindow;
                             errorCount = 0;
                             DisplayTranslatedCaption = "[INFO] LiveCaptions restored successfully";
                         }

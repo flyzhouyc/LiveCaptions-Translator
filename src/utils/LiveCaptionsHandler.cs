@@ -105,27 +105,42 @@ namespace LiveCaptionsTranslator.utils
             return string.Empty;
         }
         // 添加一个方法检查LiveCaptions窗口状态
-
+        // 添加这个方法到 LiveCaptionsHandler 类中的任何公共方法位置
+        public static bool IsLiveCaptionsActive(AutomationElement window)
+        {
+            if (window == null) return false;
+            
+            try
+            {
+                nint hWnd = new nint((long)window.Current.NativeWindowHandle);
+                return WindowsAPI.IsWindow(hWnd);
+            }
+            catch
+            {
+                return false;
+            }
+        }
         // 添加尝试恢复LiveCaptions的方法
-        public static bool TryRestoreLiveCaptions(ref AutomationElement window)
+        // 修改 TryRestoreLiveCaptions 方法避免使用 ref 参数
+        public static AutomationElement TryRestoreLiveCaptions(AutomationElement currentWindow)
         {
             try
             {
-                if (window != null)
+                if (currentWindow != null)
                 {
-                    try { KillLiveCaptions(window); } 
+                    try { KillLiveCaptions(currentWindow); } 
                     catch { /* 忽略错误 */ }
                 }
                 
-                window = LaunchLiveCaptions();
-                FixLiveCaptions(window);
-                HideLiveCaptions(window);
-                return true;
+                var newWindow = LaunchLiveCaptions();
+                FixLiveCaptions(newWindow);
+                HideLiveCaptions(newWindow);
+                return newWindow;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"恢复LiveCaptions失败: {ex.Message}");
-                return false;
+                return null;
             }
         }
 
