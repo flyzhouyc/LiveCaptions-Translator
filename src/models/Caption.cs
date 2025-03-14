@@ -170,7 +170,7 @@ namespace LiveCaptionsTranslator.models
                         DisplayOriginalCaption = fullText.Substring(lastEOSIndex + 1);
                     }
                     // 如果最后一个句子太长，截断显示内容
-                    DisplayOriginalCaption = TextUtil.ShortenDisplaySentence(DisplayOriginalCaption, 160);
+                    DisplayOriginalCaption = TextUtil.ShortenDisplaySentence(DisplayOriginalCaption, 200);
                 }
 
                 // OriginalCaption: 实际要翻译的句子
