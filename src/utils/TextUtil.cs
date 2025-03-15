@@ -11,10 +11,29 @@ namespace LiveCaptionsTranslator.utils
         // 标点符号定义
         public static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
         public static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
-        // 使用数组初始化方式避免字符串转义问题
-        public static readonly char[] PUNC_QUOTES = new char[] { 
-            '"', '\'', '"', '"', ''', ''', '「', '」', '『', '』', 
-            '(', ')', '（', '）', '[', ']', '【', '】', '{', '}'
+        
+        // 使用十六进制Unicode编码定义引号和括号字符
+        public static readonly char[] PUNC_QUOTES = {
+            '\u0022', // "
+            '\u0027', // '
+            '\u201C', // "
+            '\u201D', // "
+            '\u2018', // '
+            '\u2019', // '
+            '\u300C', // 「
+            '\u300D', // 」
+            '\u300E', // 『
+            '\u300F', // 』
+            '\u0028', // (
+            '\u0029', // )
+            '\uFF08', // （
+            '\uFF09', // ）
+            '\u005B', // [
+            '\u005D', // ]
+            '\u3010', // 【
+            '\u3011', // 】
+            '\u007B', // {
+            '\u007D'  // }
         };
         
         // 长度阈值常量
