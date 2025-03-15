@@ -11,7 +11,11 @@ namespace LiveCaptionsTranslator.utils
         // 标点符号定义
         public static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
         public static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
-        public static readonly char[] PUNC_QUOTES = "\"'""''「」『』()（）[]【】{}".ToCharArray();
+        // 使用数组初始化方式避免字符串转义问题
+        public static readonly char[] PUNC_QUOTES = new char[] { 
+            '"', '\'', '"', '"', ''', ''', '「', '」', '『', '』', 
+            '(', ')', '（', '）', '[', ']', '【', '】', '{', '}'
+        };
         
         // 长度阈值常量
         public const int SHORT_THRESHOLD = 12;
