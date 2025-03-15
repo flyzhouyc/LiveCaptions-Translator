@@ -214,7 +214,7 @@ namespace LiveCaptionsTranslator.utils
             var language = Translator.Setting?.TargetLanguage;
             string strategy = "2";
 
-s           tring encodedText = Uri.EscapeDataString(text);
+            string encodedText = Uri.EscapeDataString(text);
             string url = $"https://dictionaryextension-pa.googleapis.com/v1/dictionaryExtensionData?" +
                          $"language={language}&" +
                          $"key={apiKey}&" +
