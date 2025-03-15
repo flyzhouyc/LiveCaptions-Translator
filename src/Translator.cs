@@ -14,6 +14,8 @@ namespace LiveCaptionsTranslator
         private static Caption? caption = null;
         private static Setting? setting = null;
         private static readonly Queue<string> pendingTextQueue = new();
+        // 增加缓存上一次处理的完整文本，用于语义分析和连续性检测
+        private static string lastProcessedFullText = string.Empty;
 
         public static AutomationElement? Window
         {
@@ -67,6 +69,10 @@ namespace LiveCaptionsTranslator
                 if (string.IsNullOrEmpty(fullText))
                     continue;
 
+                // 检查与上次文本的差异，以确保连续性
+                string addedContent = TextUtil.GetAddedContent(lastProcessedFullText, fullText);
+                lastProcessedFullText = fullText;
+
                 // Note: For certain languages (such as Japanese), LiveCaptions excessively uses `\n`.
                 // Preprocess - remove the `.` between 2 uppercase letters.
                 fullText = Regex.Replace(fullText, @"(?<=[A-Z])\s*\.\s*(?=[A-Z])", "");
@@ -76,44 +82,28 @@ namespace LiveCaptionsTranslator
                 // Preprocess - Replace redundant `\n` within sentences with comma or period.
                 fullText = TextUtil.ReplaceNewlines(fullText, TextUtil.MEDIUM_THRESHOLD);
 
-                // Get the last sentence.
-                int lastEOSIndex;
-                if (Array.IndexOf(TextUtil.PUNC_EOS, fullText[^1]) != -1)
-                    lastEOSIndex = fullText[0..^1].LastIndexOfAny(TextUtil.PUNC_EOS);
-                else
-                    lastEOSIndex = fullText.LastIndexOfAny(TextUtil.PUNC_EOS);
-                string latestCaption = fullText.Substring(lastEOSIndex + 1);
+                // 改进：使用语义分割，而不仅仅依靠句尾标点
+                string latestCaption = TextUtil.ExtractMeaningfulSegment(fullText);
                 
-                // If the last sentence is too short, extend it by adding the previous sentence.
-                // Note: Expand `lastestCaption` instead of `DisplayOriginalCaption`,
-                // because LiveCaptions may generate multiple characters including EOS at once.
-                if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < TextUtil.SHORT_THRESHOLD)
-                {
-                    lastEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
-                    latestCaption = fullText.Substring(lastEOSIndex + 1);
-                }
-
                 // `DisplayOriginalCaption`: The sentence to be displayed to the user.
                 if (Caption.DisplayOriginalCaption.CompareTo(latestCaption) != 0)
                 {
                     Caption.DisplayOriginalCaption = latestCaption;
-                    // If the last sentence is too long, truncate it when displayed.
+                    // 优化显示截断：使用更智能的方式截断
                     Caption.DisplayOriginalCaption = 
-                        TextUtil.ShortenDisplaySentence(Caption.DisplayOriginalCaption, TextUtil.LONG_THRESHOLD);
+                        TextUtil.ShortenDisplaySentenceSmartly(Caption.DisplayOriginalCaption, TextUtil.LONG_THRESHOLD);
                 }
 
-                // Prepare for `OriginalCaption`. If Expanded, only retain the complete sentence.
-                int lastEOS = latestCaption.LastIndexOfAny(TextUtil.PUNC_EOS);
-                if (lastEOS != -1)
-                    latestCaption = latestCaption.Substring(0, lastEOS + 1);
-                
                 // `OriginalCaption`: The sentence to be really translated.
-                if (Caption.OriginalCaption.CompareTo(latestCaption) != 0)
+                // 确保句子有足够的完整性
+                string translationContent = TextUtil.EnsureSentenceCompleteness(latestCaption);
+                if (Caption.OriginalCaption.CompareTo(translationContent) != 0)
                 {
-                    Caption.OriginalCaption = latestCaption;
+                    Caption.OriginalCaption = translationContent;
                     
                     idleCount = 0;
-                    if (Array.IndexOf(TextUtil.PUNC_EOS, Caption.OriginalCaption[^1]) != -1)
+                    // 优化翻译触发条件 - 使用语义完整性判断而不仅是根据标点
+                    if (TextUtil.IsMeaningfulForTranslation(Caption.OriginalCaption))
                     {
                         syncCount = 0;
                         pendingTextQueue.Enqueue(Caption.OriginalCaption);
@@ -173,11 +163,11 @@ namespace LiveCaptionsTranslator
                     {
                         Caption.TranslatedCaption = translationTaskQueue.Output;
                         Caption.DisplayTranslatedCaption = 
-                            TextUtil.ShortenDisplaySentence(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
+                            TextUtil.ShortenDisplaySentenceSmartly(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
                     }
 
                     // If the original sentence is a complete sentence, pause for better visual experience.
-                    if (Array.IndexOf(TextUtil.PUNC_EOS, originalSnapshot[^1]) != -1)
+                    if (TextUtil.IsMeaningfulForTranslation(originalSnapshot))
                         Thread.Sleep(600);
                 }
                 Thread.Sleep(40);
@@ -186,29 +176,62 @@ namespace LiveCaptionsTranslator
 
         public static async Task<string> Translate(string text, CancellationToken token = default)
         {
-            string translatedText;
-            try
+            string translatedText = string.Empty;
+            int maxRetries = 2; // 添加重试次数
+            int currentRetry = 0;
+            
+            while(currentRetry <= maxRetries)
             {
-                Stopwatch? sw = null;
-                if (Setting.MainWindow.LatencyShow)
+                try
                 {
-                    sw = Stopwatch.StartNew();
+                    Stopwatch? sw = null;
+                    if (Setting.MainWindow.LatencyShow)
+                    {
+                        sw = Stopwatch.StartNew();
+                    }
+
+                    translatedText = await TranslateAPI.TranslateFunction(text, token);
+
+                    if (sw != null)
+                    {
+                        sw.Stop();
+                        translatedText = $"[{sw.ElapsedMilliseconds} ms] " + translatedText;
+                    }
+                    
+                    // 如果翻译成功，返回结果
+                    if (!translatedText.StartsWith("[Translation Failed]"))
+                        return translatedText;
+                    
+                    // 如果翻译失败但不是最后一次尝试，进行重试
+                    if (currentRetry < maxRetries)
+                    {
+                        currentRetry++;
+                        // 指数退避策略 - 每次等待时间增加
+                        await Task.Delay(500 * (int)Math.Pow(2, currentRetry), token);
+                        continue;
+                    }
                 }
-
-                translatedText = await TranslateAPI.TranslateFunction(text, token);
-
-                if (sw != null)
+                catch (Exception ex)
                 {
-                    sw.Stop();
-                    translatedText = $"[{sw.ElapsedMilliseconds} ms] " + translatedText;
+                    Console.WriteLine($"[Error] Translation failed: {ex.Message}");
+                    
+                    // 如果不是最后一次尝试，进行重试
+                    if (currentRetry < maxRetries)
+                    {
+                        currentRetry++;
+                        await Task.Delay(500 * (int)Math.Pow(2, currentRetry), token);
+                        continue;
+                    }
+                    
+                    return $"[Translation Failed] {ex.Message}";
                 }
+                
+                // 如果到达这里，说明重试机会已用完
+                break;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Error] Translation failed: {ex.Message}");
-                return $"[Translation Failed] {ex.Message}";
-            }
-            return translatedText;
+            
+            // 所有重试都失败
+            return translatedText ?? $"[Translation Failed] After {maxRetries} retries";
         }
 
         public static async Task Log(string originalText, string translatedText, 
@@ -276,12 +299,18 @@ namespace LiveCaptionsTranslator
         
         public static async Task<bool> IsOverwrite(string originalText, CancellationToken token = default)
         {
-            // If this text is too similar to the last one, rewrite it when logging.
+            // 改进相似度判断：提高相似度阈值，添加更严格的内容比较
             string lastOriginalText = await SQLiteHistoryLogger.LoadLastSourceText(token);
             if (lastOriginalText == null)
                 return false;
+                
+            // 只有当相似度非常高且内容长度相近时才判定为覆盖
             double similarity = TextUtil.Similarity(originalText, lastOriginalText);
-            return similarity > 0.66;
+            double lengthRatio = (double)Math.Max(originalText.Length, lastOriginalText.Length) / 
+                                Math.Min(originalText.Length, lastOriginalText.Length);
+                                
+            // 提高相似度阈值到0.8，并增加长度比例判断条件
+            return similarity > 0.8 && lengthRatio < 1.2;
         }
     }
 }
