@@ -32,35 +32,11 @@ namespace LiveCaptionsTranslator.utils
         {
             get => Translator.Setting.Prompt;
         }
-        
-        // 为不同API创建不同的HttpClient实例，避免共享超时设置
-        private static readonly Dictionary<string, HttpClient> apiClients = new Dictionary<string, HttpClient>();
-        
-        // 获取适合文本长度的超时时间
-        private static TimeSpan GetDynamicTimeout(string text)
+
+        private static readonly HttpClient client = new HttpClient()
         {
-            // 基本超时5秒
-            int baseTimeoutSeconds = 5;
-            
-            // 根据文本长度增加超时时间，每100个字符增加1秒，最大30秒
-            int extraSeconds = Math.Min(text.Length / 100, 25);
-            
-            return TimeSpan.FromSeconds(baseTimeoutSeconds + extraSeconds);
-        }
-        
-        // 获取或创建API的HttpClient
-        private static HttpClient GetClientForApi(string apiName, string text)
-        {
-            if (!apiClients.ContainsKey(apiName))
-            {
-                apiClients[apiName] = new HttpClient();
-            }
-            
-            // 设置动态超时
-            apiClients[apiName].Timeout = GetDynamicTimeout(text);
-            
-            return apiClients[apiName];
-        }
+            Timeout = TimeSpan.FromSeconds(5)
+        };
 
         public static async Task<string> OpenAI(string text, CancellationToken token = default)
         {
@@ -77,15 +53,12 @@ namespace LiveCaptionsTranslator.utils
                     new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" }
                 },
                 temperature = config?.Temperature,
-                max_tokens = 128, // 增加最大token数以处理更长的文本
+                max_tokens = 64,
                 stream = false
             };
 
             string jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-            
-            // 获取动态超时的客户端
-            var client = GetClientForApi("OpenAI", text);
             client.DefaultRequestHeaders.Clear();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config?.ApiKey}");
 
@@ -132,15 +105,12 @@ namespace LiveCaptionsTranslator.utils
                     new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" }
                 },
                 temperature = config?.Temperature,
-                max_tokens = 128, // 增加最大token数
+                max_tokens = 64,
                 stream = false
             };
 
             string jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-            
-            // 获取动态超时的客户端
-            var client = GetClientForApi("Ollama", text);
             client.DefaultRequestHeaders.Clear();
 
             HttpResponseMessage response;
@@ -175,9 +145,6 @@ namespace LiveCaptionsTranslator.utils
 
             string encodedText = Uri.EscapeDataString(text);
             var url = $"https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl={language}&q={encodedText}";
-
-            // 获取动态超时的客户端
-            var client = GetClientForApi("Google", text);
 
             HttpResponseMessage response;
             try
@@ -221,8 +188,6 @@ namespace LiveCaptionsTranslator.utils
                          $"term={encodedText}&" +
                          $"strategy={strategy}";
 
-            // 获取动态超时的客户端
-            var client = GetClientForApi("Google2", text);
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("x-referer", "chrome-extension://mgijmajocgfcbeboacabfgobmjgjcoja");
 
@@ -274,13 +239,9 @@ namespace LiveCaptionsTranslator.utils
                 {
                     new { role = "system", content = string.Format(Prompt, language)},
                     new { role = "user", content = $"🔤 {text} 🔤" }
-                },
-                temperature = config?.Temperature,
-                max_tokens = 128 // 增加最大token数
+                }
             };
 
-            // 获取动态超时的客户端
-            var client = GetClientForApi("OpenRouter", text);
             var request = new HttpRequestMessage(HttpMethod.Post, apiUrl)
             {
                 Content = new StringContent(
@@ -339,8 +300,6 @@ namespace LiveCaptionsTranslator.utils
             string jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            // 获取动态超时的客户端
-            var client = GetClientForApi("DeepL", text);
             client.DefaultRequestHeaders.Clear();
             client.DefaultRequestHeaders.Add("Authorization", $"DeepL-Auth-Key {config?.ApiKey}");
 

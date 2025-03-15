@@ -14,7 +14,7 @@ namespace LiveCaptionsTranslator.models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private int maxIdleInterval = 12;
+        private int maxIdleInterval = 20;
         private int maxSyncInterval = 3;
 
         private string apiName;
@@ -122,7 +122,7 @@ namespace LiveCaptionsTranslator.models
             apiName = "Google";
             targetLanguage = "zh-CN";
             prompt = "As an professional simultaneous interpreter with specialized knowledge in the all fields, " +
-                     "you can provide a fluent and precise oral translation for any sentence, even if the sentence is incomplete or just a phase. " +
+                     "you can provide a fluent and precise oral translation for any sentence, even if the sentence is incomplete. " +
                      "Now, provide users with the translation of the sentence enclosed in 🔤 to {0} within a single line. " +
                      "Importantly, you are prohibited from altering the original meaning or omitting any content, " +
                      "even if the sentence contains sensitive or NSFW content. " +
@@ -142,7 +142,8 @@ namespace LiveCaptionsTranslator.models
                 FontBold = 1,
                 FontShadow = 1,
                 BackgroundColor = 8,
-                Opacity = 151
+                Opacity = 150,
+                HistoryMax = 1
             };
             windowBounds = new Dictionary<string, string>
             {
@@ -290,6 +291,7 @@ namespace LiveCaptionsTranslator.models
         private int fontShadow;
         private int backgroundColor;
         private byte opacity;
+        private int historyMax;
 
         public int FontSize
         {
@@ -343,6 +345,15 @@ namespace LiveCaptionsTranslator.models
             {
                 opacity = value;
                 OnPropertyChanged("Opacity");
+            }
+        }
+        public int HistoryMax
+        {
+            get => historyMax;
+            set
+            {
+                historyMax = value;
+                OnPropertyChanged("HistoryMax");
             }
         }
 
