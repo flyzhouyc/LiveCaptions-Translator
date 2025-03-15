@@ -49,6 +49,7 @@ namespace LiveCaptionsTranslator.utils
                 string split = splits[i].Trim();
                 if (string.IsNullOrEmpty(split))
                     continue;
+<<<<<<< HEAD
                     
                 if (i > 0)
                 {
@@ -70,11 +71,25 @@ namespace LiveCaptionsTranslator.utils
                 }
                 
                 result.Append(split);
+=======
+
+                char lastChar = splits[i][^1];
+                bool isCJ = (lastChar >= '\u4E00' && lastChar <= '\u9FFF') ||
+                            (lastChar >= '\u3400' && lastChar <= '\u4DBF') ||
+                            (lastChar >= '\u3040' && lastChar <= '\u30FF');
+                bool isKorean = (lastChar >= '\uAC00' && lastChar <= '\uD7AF');
+
+                if (Encoding.UTF8.GetByteCount(splits[i]) >= byteThreshold)
+                    splits[i] += isCJ && !isKorean ? "。" : ". ";
+                else
+                    splits[i] += isCJ && !isKorean ? "——" : "—";
+>>>>>>> b6661e87da83c8b28c6c1afb387deca63143704e
             }
             
             return result.ToString();
         }
 
+<<<<<<< HEAD
         // 检查是否为中文或日文字符
         private static bool IsChineseOrJapanese(string text)
         {
@@ -112,6 +127,8 @@ namespace LiveCaptionsTranslator.utils
             return result;
         }
 
+=======
+>>>>>>> b6661e87da83c8b28c6c1afb387deca63143704e
         public static double Similarity(string text1, string text2)
         {
             // 快速路径检查

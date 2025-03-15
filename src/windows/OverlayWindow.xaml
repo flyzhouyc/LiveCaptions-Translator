@@ -62,7 +62,7 @@
                         FontSize="15"
                         Foreground="#FFFFFFFF"
                         Style="{StaticResource CaptionBlockStyle}"
-                        Text="{Binding OverlayOriginalCaption, UpdateSourceTrigger=PropertyChanged}">
+                        Text="{Binding DisplayOriginalCaption, UpdateSourceTrigger=PropertyChanged}">
                         <TextBlock.Effect>
                             <DropShadowEffect
                                 x:Name="OriginalCaptionShadow"
@@ -86,7 +86,7 @@
                         FontSize="18"
                         Foreground="#FFFFFFFF"
                         Style="{StaticResource CaptionBlockStyle}"
-                        Text="{Binding OverlayTranslatedCaption, UpdateSourceTrigger=PropertyChanged}">
+                        Text="{Binding DisplayTranslatedCaption, UpdateSourceTrigger=PropertyChanged}">
                         <TextBlock.Effect>
                             <DropShadowEffect
                                 x:Name="TranslatedCaptionShadow"

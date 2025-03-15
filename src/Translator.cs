@@ -116,6 +116,7 @@ namespace LiveCaptionsTranslator
                         }
                     }
 
+<<<<<<< HEAD
                     // 获取 LiveCaptions 识别的文本
                     string fullText = string.Empty;
                     try
@@ -128,6 +129,52 @@ namespace LiveCaptionsTranslator
                         Caption.DisplayTranslatedCaption = "[WARNING] LiveCaptions was unexpectedly closed, restarting...";
                         continue;
                     }
+=======
+                // Note: For certain languages (such as Japanese), LiveCaptions excessively uses `\n`.
+                // Preprocess - remove the `.` between 2 uppercase letters.
+                fullText = Regex.Replace(fullText, @"(?<=[A-Z])\s*\.\s*(?=[A-Z])", "");
+                // Preprocess - Remove redundant `\n` around punctuation.
+                fullText = Regex.Replace(fullText, @"\s*([.!?,])\s*", "$1 ");
+                fullText = Regex.Replace(fullText, @"\s*([。！？，、])\s*", "$1");
+                // Preprocess - Replace redundant `\n` within sentences with comma or period.
+                fullText = TextUtil.ReplaceNewlines(fullText, TextUtil.MEDIUM_THRESHOLD);
+
+                // Get the last sentence.
+                int lastEOSIndex;
+                if (Array.IndexOf(TextUtil.PUNC_EOS, fullText[^1]) != -1)
+                    lastEOSIndex = fullText[0..^1].LastIndexOfAny(TextUtil.PUNC_EOS);
+                else
+                    lastEOSIndex = fullText.LastIndexOfAny(TextUtil.PUNC_EOS);
+                string latestCaption = fullText.Substring(lastEOSIndex + 1);
+                
+                // If the last sentence is too short, extend it by adding the previous sentence.
+                // Note: Expand `lastestCaption` instead of `DisplayOriginalCaption`,
+                // because LiveCaptions may generate multiple characters including EOS at once.
+                if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < TextUtil.SHORT_THRESHOLD)
+                {
+                    lastEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
+                    latestCaption = fullText.Substring(lastEOSIndex + 1);
+                }
+
+                // `DisplayOriginalCaption`: The sentence to be displayed to the user.
+                if (Caption.DisplayOriginalCaption.CompareTo(latestCaption) != 0)
+                {
+                    Caption.DisplayOriginalCaption = latestCaption;
+                    // If the last sentence is too long, truncate it when displayed.
+                    Caption.DisplayOriginalCaption = 
+                        TextUtil.ShortenDisplaySentence(Caption.DisplayOriginalCaption, TextUtil.LONG_THRESHOLD);
+                }
+
+                // Prepare for `OriginalCaption`. If Expanded, only retain the complete sentence.
+                int lastEOS = latestCaption.LastIndexOfAny(TextUtil.PUNC_EOS);
+                if (lastEOS != -1)
+                    latestCaption = latestCaption.Substring(0, lastEOS + 1);
+                
+                // `OriginalCaption`: The sentence to be really translated.
+                if (Caption.OriginalCaption.CompareTo(latestCaption) != 0)
+                {
+                    Caption.OriginalCaption = latestCaption;
+>>>>>>> b6661e87da83c8b28c6c1afb387deca63143704e
                     
                     if (string.IsNullOrEmpty(fullText))
                     {
@@ -328,6 +375,7 @@ namespace LiveCaptionsTranslator
                             translateLoopDelay = Math.Min(translateLoopDelay + 5, 100);
                         }
                     }
+<<<<<<< HEAD
                     
                     await Task.Delay(translateLoopDelay);
                 }
@@ -335,6 +383,24 @@ namespace LiveCaptionsTranslator
                 {
                     Console.WriteLine($"[Error] TranslateLoop error: {ex.Message}");
                     await Task.Delay(1000); // 错误后短暂等待
+=======
+
+                    if (LogOnlyFlag)
+                    {
+                        Caption.TranslatedCaption = string.Empty;
+                        Caption.DisplayTranslatedCaption = "[Paused]";
+                    }
+                    else if (!string.IsNullOrEmpty(translationTaskQueue.Output))
+                    {
+                        Caption.TranslatedCaption = translationTaskQueue.Output;
+                        Caption.DisplayTranslatedCaption = 
+                            TextUtil.ShortenDisplaySentence(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
+                    }
+
+                    // If the original sentence is a complete sentence, pause for better visual experience.
+                    if (Array.IndexOf(TextUtil.PUNC_EOS, originalSnapshot[^1]) != -1)
+                        Thread.Sleep(600);
+>>>>>>> b6661e87da83c8b28c6c1afb387deca63143704e
                 }
             }
         }
@@ -347,13 +413,21 @@ namespace LiveCaptionsTranslator
             try
             {
                 Stopwatch? sw = null;
+<<<<<<< HEAD
                 if (Setting?.MainWindow.LatencyShow == true)
+=======
+                if (Setting.MainWindow.LatencyShow)
+>>>>>>> b6661e87da83c8b28c6c1afb387deca63143704e
                 {
                     sw = Stopwatch.StartNew();
                 }
 
+<<<<<<< HEAD
                 // 调用翻译 API，这里使用了改进后的 API 调用方法
                 string translatedText = await TranslateAPI.TranslateFunction(text, token);
+=======
+                translatedText = await TranslateAPI.TranslateFunction(text, token);
+>>>>>>> b6661e87da83c8b28c6c1afb387deca63143704e
 
                 if (sw != null)
                 {
@@ -438,6 +512,7 @@ namespace LiveCaptionsTranslator
         
         public static async Task AddLogCard(CancellationToken token = default)
         {
+<<<<<<< HEAD
             try
             {
                 var lastLog = await SQLiteHistoryLogger.LoadLastTranslation(token);
@@ -454,6 +529,15 @@ namespace LiveCaptionsTranslator
             {
                 Console.WriteLine($"[Error] Failed to add log card: {ex.Message}");
             }
+=======
+            var lastLog = await SQLiteHistoryLogger.LoadLastTranslation(token);
+            if (lastLog == null)
+                return;
+            if (Caption?.LogCards.Count >= Setting?.MainWindow.CaptionLogMax)
+                Caption?.LogCards.Dequeue();
+            Caption?.LogCards.Enqueue(lastLog);
+            Caption?.OnPropertyChanged("DisplayLogCards");
+>>>>>>> b6661e87da83c8b28c6c1afb387deca63143704e
         }
         
         public static async Task<bool> IsOverwrite(string originalText, CancellationToken token = default)
