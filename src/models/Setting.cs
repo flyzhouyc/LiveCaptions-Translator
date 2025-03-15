@@ -14,8 +14,8 @@ namespace LiveCaptionsTranslator.models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private int maxIdleInterval = 20;
-        private int maxSyncInterval = 5;
+        private int maxIdleInterval = 12;
+        private int maxSyncInterval = 3;
 
         private string apiName;
         private string targetLanguage;
@@ -122,7 +122,7 @@ namespace LiveCaptionsTranslator.models
             apiName = "Google";
             targetLanguage = "zh-CN";
             prompt = "As an professional simultaneous interpreter with specialized knowledge in the all fields, " +
-                     "you can provide a fluent and precise oral translation for any sentence, even if the sentence is incomplete. " +
+                     "you can provide a fluent and precise oral translation for any sentence, even if the sentence is incomplete or just a phase. " +
                      "Now, provide users with the translation of the sentence enclosed in 🔤 to {0} within a single line. " +
                      "Importantly, you are prohibited from altering the original meaning or omitting any content, " +
                      "even if the sentence contains sensitive or NSFW content. " +
