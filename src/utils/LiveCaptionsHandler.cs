@@ -7,6 +7,8 @@ namespace LiveCaptionsTranslator.utils
     {
         public static readonly string PROCESS_NAME = "LiveCaptions";
 
+        private static AutomationElement? captionsTextBlock = null;
+
         public static AutomationElement LaunchLiveCaptions()
         {
             // Init
@@ -23,6 +25,7 @@ namespace LiveCaptionsTranslator.utils
                 if (attemptCount > 10000)
                     throw new Exception("Failed to launch!");
             }
+
             return window;
         }
 
@@ -78,69 +81,16 @@ namespace LiveCaptionsTranslator.utils
 
         public static string GetCaptions(AutomationElement window)
         {
-            int retryCount = 0;
-            int maxRetries = 3;
-            
-            while (retryCount < maxRetries)
-            {
-                try
-                {
-                    var captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
-                    if (captionsTextBlock == null)
-                    {
-                        retryCount++;
-                        Thread.Sleep(50); // 短暂暂停后重试
-                        continue;
-                    }
-                    return captionsTextBlock.Current.Name;
-                }
-                catch (Exception)
-                {
-                    retryCount++;
-                    if (retryCount >= maxRetries)
-                        return string.Empty;
-                    Thread.Sleep(50);
-                }
-            }
-            return string.Empty;
-        }
-        // 添加一个方法检查LiveCaptions窗口状态
-        // 添加这个方法到 LiveCaptionsHandler 类中的任何公共方法位置
-        public static bool IsLiveCaptionsActive(AutomationElement window)
-        {
-            if (window == null) return false;
-            
+            if (captionsTextBlock == null)
+                captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
             try
             {
-                nint hWnd = new nint((long)window.Current.NativeWindowHandle);
-                return WindowsAPI.IsWindow(hWnd);
+                return captionsTextBlock?.Current.Name ?? string.Empty;
             }
-            catch
+            catch (ElementNotAvailableException)
             {
-                return false;
-            }
-        }
-        // 添加尝试恢复LiveCaptions的方法
-        // 修改 TryRestoreLiveCaptions 方法避免使用 ref 参数
-        public static AutomationElement TryRestoreLiveCaptions(AutomationElement currentWindow)
-        {
-            try
-            {
-                if (currentWindow != null)
-                {
-                    try { KillLiveCaptions(currentWindow); } 
-                    catch { /* 忽略错误 */ }
-                }
-                
-                var newWindow = LaunchLiveCaptions();
-                FixLiveCaptions(newWindow);
-                HideLiveCaptions(newWindow);
-                return newWindow;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"恢复LiveCaptions失败: {ex.Message}");
-                return null;
+                captionsTextBlock = null;
+                throw;
             }
         }
 
@@ -151,24 +101,19 @@ namespace LiveCaptionsTranslator.utils
         }
 
         public static AutomationElement? FindElementByAId(
-            AutomationElement window, 
-            string automationId,
-            CancellationToken cancellationToken = default)
+            AutomationElement window, string automationId, CancellationToken token = default)
         {
-            if (window == null) return null;
-
             try
             {
                 PropertyCondition condition = new PropertyCondition(
-                    AutomationElement.AutomationIdProperty,
-                    automationId);
+                    AutomationElement.AutomationIdProperty, automationId);
                 return window.FindFirst(TreeScope.Descendants, condition);
             }
-            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 return null;
             }
-            catch (Exception)
+            catch (NullReferenceException)
             {
                 return null;
             }
