@@ -219,12 +219,12 @@ namespace LiveCaptionsTranslator.utils
 
                     using (var command = new SqliteCommand(insertQuery, GetConnection(), transaction))
                     {
-                        // 重用参数对象减少对象创建
-                        var timestampParam = command.Parameters.Add("@Timestamp", System.Data.DbType.String);
-                        var sourceTextParam = command.Parameters.Add("@SourceText", System.Data.DbType.String);
-                        var translatedTextParam = command.Parameters.Add("@TranslatedText", System.Data.DbType.String);
-                        var targetLanguageParam = command.Parameters.Add("@TargetLanguage", System.Data.DbType.String);
-                        var apiUsedParam = command.Parameters.Add("@ApiUsed", System.Data.DbType.String);
+                        // 重用参数对象减少对象创建 - 修复类型问题
+                        var timestampParam = command.Parameters.AddWithValue("@Timestamp", "");
+                        var sourceTextParam = command.Parameters.AddWithValue("@SourceText", "");
+                        var translatedTextParam = command.Parameters.AddWithValue("@TranslatedText", "");
+                        var targetLanguageParam = command.Parameters.AddWithValue("@TargetLanguage", "");
+                        var apiUsedParam = command.Parameters.AddWithValue("@ApiUsed", "");
 
                         foreach (var entry in entries)
                         {
@@ -551,8 +551,9 @@ namespace LiveCaptionsTranslator.utils
                     "UPDATE TranslationHistory SET Timestamp = @Timestamp WHERE Id = @Id",
                     GetConnection(), transaction))
                 {
-                    var idParam = updateCommand.Parameters.Add("@Id", System.Data.DbType.Int64);
-                    var timestampParam = updateCommand.Parameters.Add("@Timestamp", System.Data.DbType.String);
+                    // 修复参数类型问题
+                    var idParam = updateCommand.Parameters.AddWithValue("@Id", 0);
+                    var timestampParam = updateCommand.Parameters.AddWithValue("@Timestamp", "");
                     
                     foreach (var (id, timestamp) in records)
                     {
