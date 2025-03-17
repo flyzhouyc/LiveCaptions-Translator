@@ -739,8 +739,52 @@ namespace LiveCaptionsTranslator.utils
     }
 
     // 原代码中的ConfigDictConverter保持不变
-    public class ConfigDictConverter : JsonConverter<Dictionary<string, TranslateAPIConfig>>
+    ublic class ConfigDictConverter : JsonConverter<Dictionary<string, TranslateAPIConfig>>
     {
-        // 保持原实现不变...
+        public override Dictionary<string, TranslateAPIConfig> Read(
+            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var configs = new Dictionary<string, TranslateAPIConfig>();
+            if (reader.TokenType != JsonTokenType.StartObject)
+                throw new JsonException("Expected a StartObject token.");
+
+            reader.Read();
+            while (reader.TokenType == JsonTokenType.PropertyName)
+            {
+                string key = reader.GetString();
+                reader.Read();
+
+                TranslateAPIConfig config;
+                var configType = Type.GetType($"LiveCaptionsTranslator.models.{key}Config");
+                if (configType != null && typeof(TranslateAPIConfig).IsAssignableFrom(configType))
+                    config = (TranslateAPIConfig)JsonSerializer.Deserialize(ref reader, configType, options);
+                else
+                    config = (TranslateAPIConfig)JsonSerializer.Deserialize(ref reader, typeof(TranslateAPIConfig), options);
+
+                configs[key] = config;
+                reader.Read();
+            }
+
+            if (reader.TokenType != JsonTokenType.EndObject)
+                throw new JsonException("Expected an EndObject token.");
+            return configs;
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer, Dictionary<string, TranslateAPIConfig> value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            foreach (var kvp in value)
+            {
+                writer.WritePropertyName(kvp.Key);
+
+                var configType = Type.GetType($"LiveCaptionsTranslator.models.{kvp.Key}Config");
+                if (configType != null && typeof(TranslateAPIConfig).IsAssignableFrom(configType))
+                    JsonSerializer.Serialize(writer, kvp.Value, configType, options);
+                else
+                    JsonSerializer.Serialize(writer, kvp.Value, typeof(TranslateAPIConfig), options);
+            }
+            writer.WriteEndObject();
+        }
     }
 }
