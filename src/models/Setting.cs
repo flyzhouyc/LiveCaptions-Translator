@@ -28,6 +28,61 @@ namespace LiveCaptionsTranslator.models
 
         private Dictionary<string, TranslateAPIConfig> configs;
         private TranslateAPIConfig? currentAPIConfig;
+        private bool enableIncrementalTranslation = true;
+        private bool adaptiveResponseTime = true;
+        private int maxIncrementalSize = 30;
+        private bool debugLogging = false;
+        /// <summary>
+        /// 启用增量翻译
+        /// </summary>
+        public bool EnableIncrementalTranslation
+        {
+            get => enableIncrementalTranslation;
+            set
+            {
+                enableIncrementalTranslation = value;
+                OnPropertyChanged("EnableIncrementalTranslation");
+            }
+        }
+
+        /// <summary>
+        /// 启用自适应响应时间
+        /// </summary>
+        public bool AdaptiveResponseTime
+        {
+            get => adaptiveResponseTime;
+            set
+            {
+                adaptiveResponseTime = value;
+                OnPropertyChanged("AdaptiveResponseTime");
+            }
+        }
+
+        /// <summary>
+        /// 最大增量翻译大小 (字符数)
+        /// </summary>
+        public int MaxIncrementalSize
+        {
+            get => maxIncrementalSize;
+            set
+            {
+                maxIncrementalSize = value;
+                OnPropertyChanged("MaxIncrementalSize");
+            }
+        }
+
+        /// <summary>
+        /// 启用调试日志
+        /// </summary>
+        public bool DebugLogging
+        {
+            get => debugLogging;
+            set
+            {
+                debugLogging = value;
+                OnPropertyChanged("DebugLogging");
+            }
+        }
 
         public string ApiName
         {

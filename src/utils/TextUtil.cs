@@ -632,5 +632,238 @@ namespace LiveCaptionsTranslator.utils
             CharLanguageCache.Clear();
             SimilarityCache.Clear();
         }
+        // 以下是TextUtil.cs中相似度计算的优化部分，需要添加到原文件中
+
+        /// <summary>
+        /// 优化的字符级增量检测，用于比较两个文本的增量变化
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public static string DetectTextIncrement(string oldText, string newText)
+        {
+            if (string.IsNullOrEmpty(oldText))
+                return newText;
+                
+            if (string.IsNullOrEmpty(newText))
+                return string.Empty;
+                
+            if (oldText == newText)
+                return string.Empty;
+                
+            // 如果新文本比旧文本短，无法构成增量
+            if (newText.Length <= oldText.Length)
+                return string.Empty;
+                
+            // 快速路径: 检查新文本是否从旧文本开始（常见情况）
+            if (newText.StartsWith(oldText))
+            {
+                return newText.Substring(oldText.Length);
+            }
+            
+            // 查找最长公共前缀
+            int prefixLength = 0;
+            int minLength = Math.Min(oldText.Length, newText.Length);
+            
+            while (prefixLength < minLength && oldText[prefixLength] == newText[prefixLength])
+            {
+                prefixLength++;
+            }
+            
+            // 如果找到了公共前缀，并且新文本更长，可能有增量
+            if (prefixLength > 0 && prefixLength < newText.Length)
+            {
+                // 如果旧文本基本被包含在前缀中（允许少量差异）
+                if (prefixLength >= oldText.Length * 0.8)
+                {
+                    return newText.Substring(prefixLength);
+                }
+            }
+            
+            // 查找最长公共子串
+            int[,] lcsMatrix = new int[oldText.Length + 1, newText.Length + 1];
+            int maxLength = 0;
+            int endPos = 0;
+            
+            for (int i = 1; i <= oldText.Length; i++)
+            {
+                for (int j = 1; j <= newText.Length; j++)
+                {
+                    if (oldText[i - 1] == newText[j - 1])
+                    {
+                        lcsMatrix[i, j] = lcsMatrix[i - 1, j - 1] + 1;
+                        if (lcsMatrix[i, j] > maxLength)
+                        {
+                            maxLength = lcsMatrix[i, j];
+                            endPos = i;
+                        }
+                    }
+                }
+            }
+            
+            // 如果找到足够长的公共子串，检查增量
+            if (maxLength > 3)
+            {
+                string commonSubstr = oldText.Substring(endPos - maxLength, maxLength);
+                int commonPos = newText.IndexOf(commonSubstr);
+                
+                // 如果公共部分在新文本前部，后面可能是增量
+                if (commonPos + commonSubstr.Length < newText.Length)
+                {
+                    return newText.Substring(commonPos + commonSubstr.Length);
+                }
+            }
+            
+            // 没有找到明确的增量模式，尝试基于差异比较
+            int diff = newText.Length - oldText.Length;
+            double similarityThreshold = 0.7;
+            
+            // 如果新旧文本相似度高，差异部分可能是增量
+            if (Similarity(oldText, newText.Substring(0, newText.Length - diff)) > similarityThreshold)
+            {
+                return newText.Substring(newText.Length - diff);
+            }
+            
+            // 无法确定增量
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// 优化的动态规划相似度计算，特别适用于字幕增量检测
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public static double FastSimilarity(string text1, string text2)
+        {
+            // 边界情况检查
+            if (text1 == text2) return 1.0;
+            if (string.IsNullOrEmpty(text1) || string.IsNullOrEmpty(text2)) return 0.0;
+            
+            // 构造缓存键
+            string cacheKey = (text1.Length <= text2.Length) ? 
+                            $"{text1.GetHashCode()}|{text2.GetHashCode()}" : 
+                            $"{text2.GetHashCode()}|{text1.GetHashCode()}";
+            
+            // 检查缓存
+            if (SimilarityCache.TryGetValue(cacheKey, out double cachedSimilarity))
+                return cachedSimilarity;
+            
+            // 长度相差过大，直接返回低相似度
+            int lenDiff = Math.Abs(text1.Length - text2.Length);
+            int maxLen = Math.Max(text1.Length, text2.Length);
+            if (lenDiff > maxLen / 2) return 0.2;
+            
+            // 针对字幕场景优化：常见模式检测
+            if (text1.StartsWith(text2) || text2.StartsWith(text1))
+            {
+                int commonLength = Math.Min(text1.Length, text2.Length);
+                double similarity = (double)commonLength / maxLen;
+                
+                // 保存到缓存
+                if (SimilarityCache.Count < 1000)
+                    SimilarityCache.TryAdd(cacheKey, similarity);
+                    
+                return similarity;
+            }
+            
+            // 使用编辑距离计算相似度
+            int editDistance = FastLevenshteinDistance(text1, text2);
+            double result = 1.0 - ((double)editDistance / maxLen);
+            
+            // 保存到缓存
+            if (SimilarityCache.Count < 1000)
+                SimilarityCache.TryAdd(cacheKey, result);
+                
+            return result;
+        }
+
+        /// <summary>
+        /// 优化的快速编辑距离计算
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        private static int FastLevenshteinDistance(string text1, string text2)
+        {
+            // 优化：确保text1是较短的字符串
+            if (text1.Length > text2.Length)
+                (text1, text2) = (text2, text1);
+                
+            int len1 = text1.Length;
+            int len2 = text2.Length;
+            
+            // 如果其中一个字符串为空，距离就是另一个字符串的长度
+            if (len1 == 0) return len2;
+            
+            // 只使用两行来节省空间
+            Span<int> prevRow = stackalloc int[len1 + 1];
+            Span<int> currRow = stackalloc int[len1 + 1];
+            
+            // 初始化第一行
+            for (int i = 0; i <= len1; i++)
+                prevRow[i] = i;
+                
+            // 计算编辑距离
+            for (int j = 1; j <= len2; j++)
+            {
+                currRow[0] = j;
+                
+                for (int i = 1; i <= len1; i++)
+                {
+                    // 快速路径：如果字符相同，成本为0
+                    int cost = (text1[i - 1] == text2[j - 1]) ? 0 : 1;
+                    
+                    currRow[i] = Math.Min(
+                        Math.Min(currRow[i - 1] + 1, prevRow[i] + 1),
+                        prevRow[i - 1] + cost);
+                }
+                
+                // 交换行
+                var temp = prevRow;
+                prevRow = currRow;
+                currRow = temp;
+            }
+            
+            // 注意：结果在prevRow中，因为最后交换了行
+            return prevRow[len1];
+        }
+
+        /// <summary>
+        /// 检测句子在持续更新中是否需要重新翻译
+        /// </summary>
+        public static bool ShouldRetranslate(string oldText, string newText)
+        {
+            // 如果新文本比旧文本短，建议重新翻译（可能是重新开始）
+            if (newText.Length < oldText.Length * 0.8)
+                return true;
+                
+            // 如果两个文本相似度低于阈值，建议重新翻译
+            if (FastSimilarity(oldText, newText) < 0.7)
+                return true;
+                
+            // 如果新文本包含新的句子结束符，建议重新翻译
+            int oldEosCount = CountEndOfSentences(oldText);
+            int newEosCount = CountEndOfSentences(newText);
+            
+            if (newEosCount > oldEosCount)
+                return true;
+                
+            // 默认情况下，不需要重新翻译
+            return false;
+        }
+
+        /// <summary>
+        /// 计算文本中句子结束符的数量
+        /// </summary>
+        private static int CountEndOfSentences(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+                
+            int count = 0;
+            foreach (char c in text)
+            {
+                if (Array.IndexOf(PUNC_EOS, c) != -1)
+                    count++;
+            }
+            
+            return count;
+        }
+
     }
 }

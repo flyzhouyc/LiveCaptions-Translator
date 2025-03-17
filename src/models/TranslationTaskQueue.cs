@@ -36,6 +36,21 @@ namespace LiveCaptionsTranslator.models
         
         // 任务优先级
         public enum TaskPriority { Low = 0, Normal = 50, High = 100, Critical = 200 }
+        
+        // 优化1: 记录最新任务ID，用于取消旧任务
+        private long _lastTaskId = 0;
+        private readonly ConcurrentDictionary<long, TranslationTask> _taskMap = 
+            new ConcurrentDictionary<long, TranslationTask>();
+            
+        // 优化2: 增量翻译缓存
+        private readonly ConcurrentDictionary<string, IncrementalCache> _incrementalCache = 
+            new ConcurrentDictionary<string, IncrementalCache>();
+            
+        // 优化3: 处理状态跟踪
+        private bool _isProcessing = false;
+        
+        // 优化4: 字符级别相似度分析
+        private readonly DiffMatchPatch _diffTool = new DiffMatchPatch();
 
         // 构造函数
         public TranslationTaskQueue(int cacheSize = 200)
@@ -48,6 +63,8 @@ namespace LiveCaptionsTranslator.models
         }
 
         public string Output => _translatedText;
+        
+        public bool IsProcessing => _isProcessing;
 
         /// <summary>
         /// 将翻译任务加入队列
@@ -66,7 +83,11 @@ namespace LiveCaptionsTranslator.models
             // 计算实际优先级
             TaskPriority actualPriority = CalculateTaskPriority(originalText, basePriority);
             
-            var newTranslationTask = new TranslationTask(worker, originalText, cts, actualPriority);
+            // 生成任务ID
+            long taskId = Interlocked.Increment(ref _lastTaskId);
+            
+            var newTranslationTask = new TranslationTask(worker, originalText, cts, actualPriority, taskId);
+            _taskMap[taskId] = newTranslationTask;
             
             bool isFirstTask = false;
             
@@ -99,44 +120,65 @@ namespace LiveCaptionsTranslator.models
             // 根据当前文本预测下一个可能的文本并加入预翻译队列
             PredictNextText(originalText);
         }
-
+        
         /// <summary>
-        /// 基于文本特性计算任务优先级
+        /// 添加增量翻译任务
         /// </summary>
-        private TaskPriority CalculateTaskPriority(string text, TaskPriority basePriority)
+        public void EnqueueIncrementalTranslation(string previousText, string currentText, 
+                                                string previousTranslation, TaskPriority basePriority = TaskPriority.High)
         {
-            int priorityScore = (int)basePriority;
-            
-            // 增加完整句子的优先级
-            if (text.Length > 0 && Array.IndexOf(TextUtil.PUNC_EOS, text[^1]) != -1)
+            // 如果之前没有翻译结果，回退到常规翻译
+            if (string.IsNullOrEmpty(previousTranslation))
             {
-                priorityScore += 50;
+                Enqueue(token => Task.Run(() => Translator.Translate(currentText, token), token), 
+                        currentText, basePriority);
+                return;
             }
             
-            // 根据文本长度调整优先级
-            if (text.Length < TextUtil.SHORT_THRESHOLD)
-            {
-                priorityScore -= 10; // 非常短的文本降低优先级
-            }
-            else if (text.Length > TextUtil.LONG_THRESHOLD)
-            {
-                priorityScore += 30; // 长文本提高优先级
-            }
+            // 确定增量部分
+            string incrementalText = ExtractTextIncrement(previousText, currentText);
             
-            // 检查语言类型
-            var languageType = _languageCache.GetOrAdd(text, t => TextUtil.DetectLanguage(t));
-            
-            // 根据历史翻译频率调整优先级
-            if (_taskMetrics.TryGetValue(text, out var metrics) && metrics.TranslationCount > 3)
+            // 如果增量部分为空或太小，使用完整翻译
+            if (string.IsNullOrEmpty(incrementalText) || incrementalText.Length < 3)
             {
-                priorityScore += 20; // 经常翻译的文本提高优先级
+                Enqueue(token => Task.Run(() => Translator.Translate(currentText, token), token), 
+                        currentText, basePriority);
+                return;
             }
             
-            // 将分数转换回枚举值
-            if (priorityScore >= (int)TaskPriority.Critical) return TaskPriority.Critical;
-            if (priorityScore >= (int)TaskPriority.High) return TaskPriority.High;
-            if (priorityScore >= (int)TaskPriority.Normal) return TaskPriority.Normal;
-            return TaskPriority.Low;
+            // 构造增量翻译任务
+            var cts = new CancellationTokenSource();
+            long taskId = Interlocked.Increment(ref _lastTaskId);
+            
+            var incrementalWorker = new Func<CancellationToken, Task<string>>(token => 
+                Task.Run(() => Translator.TranslateIncremental(
+                    currentText, incrementalText, previousTranslation, token), token));
+            
+            // 提高增量翻译的优先级
+            TaskPriority actualPriority = Math.Max(basePriority, TaskPriority.High);
+            
+            var newTask = new TranslationTask(incrementalWorker, currentText, cts, actualPriority, taskId, true);
+            _taskMap[taskId] = newTask;
+            
+            lock (_lock)
+            {
+                // 先取消低优先级任务
+                CancelLowerPriorityTasks(TaskPriority.Normal);
+                
+                // 保存增量信息到缓存
+                _incrementalCache[currentText] = new IncrementalCache
+                {
+                    PreviousText = previousText,
+                    PreviousTranslation = previousTranslation,
+                    IncrementalText = incrementalText,
+                    Timestamp = DateTime.Now
+                };
+                
+                _tasks.Add(newTask);
+            }
+            
+            // 立即处理
+            ProcessQueue();
         }
 
         /// <summary>
@@ -151,8 +193,32 @@ namespace LiveCaptionsTranslator.models
                     if (_tasks[i].Priority < threshold)
                     {
                         _tasks[i].CTS.Cancel();
+                        _taskMap.TryRemove(_tasks[i].Id, out _);
                         _tasks.RemoveAt(i);
                     }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// 取消所有较旧的任务
+        /// </summary>
+        public void CancelOlderTasks(int keepCount = 1)
+        {
+            lock (_lock)
+            {
+                if (_tasks.Count <= keepCount)
+                    return;
+                    
+                // 保留最新的 keepCount 个任务
+                var tasksToKeep = _tasks.OrderByDescending(t => t.Id).Take(keepCount).ToList();
+                
+                // 取消其他任务
+                foreach (var task in _tasks.Except(tasksToKeep).ToList())
+                {
+                    task.CTS.Cancel();
+                    _taskMap.TryRemove(task.Id, out _);
+                    _tasks.Remove(task);
                 }
             }
         }
@@ -165,7 +231,7 @@ namespace LiveCaptionsTranslator.models
             if (_translationCache.TryGet(originalText, out var cacheEntry))
             {
                 // 检查缓存项是否过期
-                if ((DateTime.UtcNow - cacheEntry.Timestamp).TotalMinutes < 30)
+                if ((DateTime.Now - cacheEntry.Timestamp).TotalMinutes < 30)
                 {
                     translation = cacheEntry.TranslatedText;
                     return true;
@@ -189,13 +255,18 @@ namespace LiveCaptionsTranslator.models
                 
             try
             {
+                _isProcessing = true;
+                
                 while (true)
                 {
                     TranslationTask? currentTask = null;
                     lock (_lock)
                     {
                         if (_tasks.Count == 0)
+                        {
+                            _isProcessing = false;
                             return;
+                        }
                             
                         // 找出优先级最高的任务
                         int highestPriorityIndex = 0;
@@ -245,14 +316,95 @@ namespace LiveCaptionsTranslator.models
                         lock (_lock)
                         {
                             _tasks.Remove(currentTask);
+                            _taskMap.TryRemove(currentTask.Id, out _);
                         }
                     }
                 }
             }
             finally
             {
+                _isProcessing = false;
                 _processSemaphore.Release();
             }
+        }
+
+        /// <summary>
+        /// 提取两个文本之间的增量部分
+        /// </summary>
+        private string ExtractTextIncrement(string oldText, string newText)
+        {
+            if (string.IsNullOrEmpty(oldText))
+                return newText;
+                
+            if (string.IsNullOrEmpty(newText))
+                return string.Empty;
+                
+            if (oldText == newText)
+                return string.Empty;
+                
+            if (newText.Length <= oldText.Length)
+                return string.Empty;
+                
+            // 优化: 使用差异比较算法找出变化部分
+            var diffs = _diffTool.diff_main(oldText, newText);
+            _diffTool.diff_cleanupSemantic(diffs);
+            
+            StringBuilder incremental = new StringBuilder();
+            
+            foreach (var diff in diffs)
+            {
+                if (diff.operation == DiffMatchPatch.Operation.INSERT)
+                {
+                    incremental.Append(diff.text);
+                }
+            }
+            
+            // 如果增量为空，尝试使用简单的后缀提取
+            if (incremental.Length == 0 && newText.StartsWith(oldText))
+            {
+                return newText.Substring(oldText.Length);
+            }
+            
+            return incremental.ToString();
+        }
+
+        /// <summary>
+        /// 基于文本特性计算任务优先级
+        /// </summary>
+        private TaskPriority CalculateTaskPriority(string text, TaskPriority basePriority)
+        {
+            int priorityScore = (int)basePriority;
+            
+            // 增加完整句子的优先级
+            if (text.Length > 0 && Array.IndexOf(TextUtil.PUNC_EOS, text[^1]) != -1)
+            {
+                priorityScore += 50;
+            }
+            
+            // 根据文本长度调整优先级
+            if (text.Length < TextUtil.SHORT_THRESHOLD)
+            {
+                priorityScore -= 10; // 非常短的文本降低优先级
+            }
+            else if (text.Length > TextUtil.LONG_THRESHOLD)
+            {
+                priorityScore += 30; // 长文本提高优先级
+            }
+            
+            // 检查语言类型
+            var languageType = _languageCache.GetOrAdd(text, t => TextUtil.DetectLanguage(t));
+            
+            // 根据历史翻译频率调整优先级
+            if (_taskMetrics.TryGetValue(text, out var metrics) && metrics.TranslationCount > 3)
+            {
+                priorityScore += 20; // 经常翻译的文本提高优先级
+            }
+            
+            // 将分数转换回枚举值
+            if (priorityScore >= (int)TaskPriority.Critical) return TaskPriority.Critical;
+            if (priorityScore >= (int)TaskPriority.High) return TaskPriority.High;
+            if (priorityScore >= (int)TaskPriority.Normal) return TaskPriority.Normal;
+            return TaskPriority.Low;
         }
 
         /// <summary>
@@ -263,7 +415,7 @@ namespace LiveCaptionsTranslator.models
             var entry = new CacheEntry
             {
                 TranslatedText = value,
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.Now
             };
             
             _translationCache.Add(key, entry);
@@ -276,10 +428,10 @@ namespace LiveCaptionsTranslator.models
         {
             _taskMetrics.AddOrUpdate(
                 text,
-                new TaskMetrics { TranslationCount = 1, LastTranslated = DateTime.UtcNow, AverageTime = translationTime },
+                new TaskMetrics { TranslationCount = 1, LastTranslated = DateTime.Now, AverageTime = translationTime },
                 (_, existing) => {
                     existing.TranslationCount++;
-                    existing.LastTranslated = DateTime.UtcNow;
+                    existing.LastTranslated = DateTime.Now;
                     if (translationTime > 0)
                     {
                         existing.AverageTime = (existing.AverageTime * (existing.TranslationCount - 1) + translationTime) 
@@ -310,7 +462,7 @@ namespace LiveCaptionsTranslator.models
         private void PredictNextText(string currentText)
         {
             // 只对完整句子进行预测
-            if (currentText.Length == 0 || !IsCompleteSentence(currentText))
+            if (string.IsNullOrEmpty(currentText) || !IsCompleteSentence(currentText))
                 return;
                 
             // 使用简单的历史分析预测下一个可能的文本
@@ -439,6 +591,7 @@ namespace LiveCaptionsTranslator.models
             _translationCache.Clear();
             _languageCache.Clear();
             _taskMetrics.Clear();
+            _incrementalCache.Clear();
         }
         
         /// <summary>
@@ -460,16 +613,33 @@ namespace LiveCaptionsTranslator.models
         public string OriginalText { get; }
         public CancellationTokenSource CTS { get; }
         public TranslationTaskQueue.TaskPriority Priority { get; }
+        public long Id { get; }
+        public bool IsIncremental { get; }
+        public DateTime CreatedAt { get; } = DateTime.Now;
 
         public TranslationTask(Func<CancellationToken, Task<string>> worker, 
             string originalText, CancellationTokenSource cts, 
-            TranslationTaskQueue.TaskPriority priority = TranslationTaskQueue.TaskPriority.Normal)
+            TranslationTaskQueue.TaskPriority priority = TranslationTaskQueue.TaskPriority.Normal, 
+            long id = 0, bool isIncremental = false)
         {
             Task = worker(cts.Token);
             OriginalText = originalText;
             CTS = cts;
             Priority = priority;
+            Id = id;
+            IsIncremental = isIncremental;
         }
+    }
+    
+    /// <summary>
+    /// 增量翻译缓存
+    /// </summary>
+    public class IncrementalCache
+    {
+        public string PreviousText { get; set; } = string.Empty;
+        public string PreviousTranslation { get; set; } = string.Empty;
+        public string IncrementalText { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; } = DateTime.Now;
     }
     
     /// <summary>
@@ -698,6 +868,292 @@ namespace LiveCaptionsTranslator.models
         public void Dispose()
         {
             _timer?.Dispose();
+        }
+    }
+    
+    /// <summary>
+    /// 差异比较工具类 (改编自Google Diff-Match-Patch)
+    /// </summary>
+    public class DiffMatchPatch
+    {
+        // 定义操作类型
+        public enum Operation
+        {
+            DELETE,
+            INSERT,
+            EQUAL
+        }
+
+        // 差异项结构
+        public class Diff
+        {
+            public Operation operation;
+            public string text;
+
+            public Diff(Operation operation, string text)
+            {
+                this.operation = operation;
+                this.text = text;
+            }
+        }
+
+        // 找出两个文本之间的差异
+        public List<Diff> diff_main(string text1, string text2)
+        {
+            // 快速检查边界情况
+            if (text1 == text2)
+            {
+                var result = new List<Diff>();
+                if (!string.IsNullOrEmpty(text1))
+                {
+                    result.Add(new Diff(Operation.EQUAL, text1));
+                }
+                return result;
+            }
+
+            // 如果一个字符串为空，结果很简单
+            if (string.IsNullOrEmpty(text1))
+            {
+                return new List<Diff> { new Diff(Operation.INSERT, text2) };
+            }
+            if (string.IsNullOrEmpty(text2))
+            {
+                return new List<Diff> { new Diff(Operation.DELETE, text1) };
+            }
+
+            // 将长字符串作为第一个参数，短字符串作为第二个参数
+            string longText = text1.Length > text2.Length ? text1 : text2;
+            string shortText = text1.Length > text2.Length ? text2 : text1;
+
+            // 检查较长字符串是否包含较短字符串
+            int index = longText.IndexOf(shortText);
+            if (index != -1)
+            {
+                // 较短字符串是较长字符串的子串
+                var result = new List<Diff>();
+                Operation op = (text1.Length > text2.Length) ? Operation.DELETE : Operation.INSERT;
+                
+                // 如果前面有不同，添加
+                if (index > 0)
+                {
+                    result.Add(new Diff(op, longText.Substring(0, index)));
+                }
+                
+                // 添加相同部分
+                result.Add(new Diff(Operation.EQUAL, shortText));
+                
+                // 如果后面有不同，添加
+                if (index + shortText.Length < longText.Length)
+                {
+                    result.Add(new Diff(op, longText.Substring(index + shortText.Length)));
+                }
+                
+                // 如果text1是较短的字符串，需要翻转操作
+                if (text1.Length <= text2.Length)
+                {
+                    for (int i = 0; i < result.Count; i++)
+                    {
+                        if (result[i].operation == Operation.INSERT)
+                        {
+                            result[i].operation = Operation.DELETE;
+                        }
+                        else if (result[i].operation == Operation.DELETE)
+                        {
+                            result[i].operation = Operation.INSERT;
+                        }
+                    }
+                }
+                
+                return result;
+            }
+
+            // 找到共同前缀
+            int commonPrefixLength = diff_commonPrefix(text1, text2);
+            string commonPrefix = text1.Substring(0, commonPrefixLength);
+            text1 = text1.Substring(commonPrefixLength);
+            text2 = text2.Substring(commonPrefixLength);
+
+            // 找到共同后缀
+            int commonSuffixLength = diff_commonSuffix(text1, text2);
+            string commonSuffix = text1.Substring(text1.Length - commonSuffixLength);
+            text1 = text1.Substring(0, text1.Length - commonSuffixLength);
+            text2 = text2.Substring(0, text2.Length - commonSuffixLength);
+
+            // 递归计算中间部分的差异
+            var diffs = compute_diff(text1, text2);
+
+            // 如果有共同前缀，添加到结果前面
+            if (commonPrefixLength > 0)
+            {
+                diffs.Insert(0, new Diff(Operation.EQUAL, commonPrefix));
+            }
+
+            // 如果有共同后缀，添加到结果后面
+            if (commonSuffixLength > 0)
+            {
+                diffs.Add(new Diff(Operation.EQUAL, commonSuffix));
+            }
+
+            return diffs;
+        }
+
+        // 简化实现：计算两个字符串的差异
+        private List<Diff> compute_diff(string text1, string text2)
+        {
+            var diffs = new List<Diff>();
+
+            // 边界情况处理
+            if (string.IsNullOrEmpty(text1))
+            {
+                if (!string.IsNullOrEmpty(text2))
+                {
+                    diffs.Add(new Diff(Operation.INSERT, text2));
+                }
+                return diffs;
+            }
+
+            if (string.IsNullOrEmpty(text2))
+            {
+                diffs.Add(new Diff(Operation.DELETE, text1));
+                return diffs;
+            }
+
+            // 简单方法：删除text1，插入text2
+            diffs.Add(new Diff(Operation.DELETE, text1));
+            diffs.Add(new Diff(Operation.INSERT, text2));
+
+            return diffs;
+        }
+
+        // 找出两个字符串的共同前缀长度
+        private int diff_commonPrefix(string text1, string text2)
+        {
+            int length = Math.Min(text1.Length, text2.Length);
+            for (int i = 0; i < length; i++)
+            {
+                if (text1[i] != text2[i])
+                {
+                    return i;
+                }
+            }
+            return length;
+        }
+
+        // 找出两个字符串的共同后缀长度
+        private int diff_commonSuffix(string text1, string text2)
+        {
+            int length = Math.Min(text1.Length, text2.Length);
+            for (int i = 0; i < length; i++)
+            {
+                if (text1[text1.Length - i - 1] != text2[text2.Length - i - 1])
+                {
+                    return i;
+                }
+            }
+            return length;
+        }
+
+        // 清理语义上不必要的差异
+        public void diff_cleanupSemantic(List<Diff> diffs)
+        {
+            if (diffs.Count == 0) return;
+            
+            // 合并相邻的DELETE和INSERT为一个可能的EQUAL
+            int index = 0;
+            while (index < diffs.Count - 1)
+            {
+                if (diffs[index].operation == Operation.DELETE &&
+                    index + 1 < diffs.Count &&
+                    diffs[index + 1].operation == Operation.INSERT)
+                {
+                    string deleteText = diffs[index].text;
+                    string insertText = diffs[index + 1].text;
+                    
+                    // 计算删除和插入的重叠部分
+                    int deleteLength = deleteText.Length;
+                    int insertLength = insertText.Length;
+                    
+                    // 至少有3个字符相同
+                    int overlapLength = diff_commonPrefix(deleteText, insertText);
+                    if (overlapLength >= 3)
+                    {
+                        // 有共同前缀，将其分离为EQUAL
+                        string prefix = deleteText.Substring(0, overlapLength);
+                        string restDelete = deleteText.Substring(overlapLength);
+                        string restInsert = insertText.Substring(overlapLength);
+                        
+                        // 替换为 EQUAL + DELETE + INSERT
+                        diffs.RemoveAt(index);
+                        diffs.RemoveAt(index); // 注意索引变化
+                        
+                        if (!string.IsNullOrEmpty(prefix))
+                        {
+                            diffs.Insert(index, new Diff(Operation.EQUAL, prefix));
+                            index++;
+                        }
+                        
+                        if (!string.IsNullOrEmpty(restDelete))
+                        {
+                            diffs.Insert(index, new Diff(Operation.DELETE, restDelete));
+                            index++;
+                        }
+                        
+                        if (!string.IsNullOrEmpty(restInsert))
+                        {
+                            diffs.Insert(index, new Diff(Operation.INSERT, restInsert));
+                        }
+                    }
+                    else
+                    {
+                        // 尝试找共同后缀
+                        overlapLength = diff_commonSuffix(deleteText, insertText);
+                        if (overlapLength >= 3)
+                        {
+                            // 有共同后缀，将其分离为EQUAL
+                            string suffix = deleteText.Substring(deleteLength - overlapLength);
+                            string restDelete = deleteText.Substring(0, deleteLength - overlapLength);
+                            string restInsert = insertText.Substring(0, insertLength - overlapLength);
+                            
+                            // 替换为 DELETE + INSERT + EQUAL
+                            diffs.RemoveAt(index);
+                            diffs.RemoveAt(index);
+                            
+                            if (!string.IsNullOrEmpty(restDelete))
+                            {
+                                diffs.Insert(index, new Diff(Operation.DELETE, restDelete));
+                                index++;
+                            }
+                            
+                            if (!string.IsNullOrEmpty(restInsert))
+                            {
+                                diffs.Insert(index, new Diff(Operation.INSERT, restInsert));
+                                index++;
+                            }
+                            
+                            if (!string.IsNullOrEmpty(suffix))
+                            {
+                                diffs.Insert(index, new Diff(Operation.EQUAL, suffix));
+                            }
+                        }
+                    }
+                }
+                index++;
+            }
+            
+            // 合并相邻的相同操作
+            index = 0;
+            while (index < diffs.Count - 1)
+            {
+                if (diffs[index].operation == diffs[index + 1].operation)
+                {
+                    diffs[index].text += diffs[index + 1].text;
+                    diffs.RemoveAt(index + 1);
+                }
+                else
+                {
+                    index++;
+                }
+            }
         }
     }
 }

@@ -119,6 +119,17 @@ namespace LiveCaptionsTranslator
             }
             var settingGrid = FindName($"{Translator.Setting.ApiName}Grid") as Grid ?? FindName($"NoSettingGrid") as Grid;
             settingGrid.Visibility = Visibility.Visible;
+            // 显示增量翻译设置
+            if (Translator.Setting.ApiName == "OpenAI" || 
+                Translator.Setting.ApiName == "Ollama" ||
+                Translator.Setting.ApiName == "OpenRouter")
+            {
+                AdvancedSettingsGrid.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                AdvancedSettingsGrid.Visibility = Visibility.Collapsed;
+            }
         }
     }
 }

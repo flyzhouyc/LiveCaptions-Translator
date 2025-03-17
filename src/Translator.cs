@@ -14,7 +14,7 @@ namespace LiveCaptionsTranslator
         private static Caption? caption = null;
         private static Setting? setting = null;
         private static readonly TranslationTaskQueue translationTaskQueue = new TranslationTaskQueue();
-        private static readonly Queue<string> pendingTextQueue = new();
+        private static readonly Queue<TranslationRequest> pendingTextQueue = new();
         
         // 错误恢复相关变量
         private static int consecutiveErrors = 0;
@@ -22,10 +22,18 @@ namespace LiveCaptionsTranslator
         private static DateTime lastLiveCaptionsCheck = DateTime.MinValue;
         private static readonly TimeSpan LIVE_CAPTIONS_CHECK_INTERVAL = TimeSpan.FromSeconds(5);
         
-        // 自适应字幕捕获间隔
-        private static int syncLoopDelay = 25;
-        private static int translateLoopDelay = 40;
+        // 优化1: 降低初始延迟以提高响应速度
+        private static int syncLoopDelay = 15;  // 从25降至15
+        private static int translateLoopDelay = 25;  // 从40降至25
         private static readonly object delayLock = new object();
+        
+        // 优化2: 添加增量翻译支持的变量
+        private static string lastTranslatedText = string.Empty;
+        private static DateTime lastTranslationTime = DateTime.MinValue;
+        private static readonly TimeSpan INCREMENTAL_THRESHOLD = TimeSpan.FromMilliseconds(1500);
+        
+        // 优化3: 增加翻译状态指示
+        private static bool isTranslationInProgress = false;
         
         private static readonly CancellationTokenSource globalCts = new CancellationTokenSource();
 
@@ -37,8 +45,11 @@ namespace LiveCaptionsTranslator
         public static Caption? Caption => caption;
         public static Setting? Setting => setting;
         public static bool LogOnlyFlag { get; set; } = false;
+        public static bool IsTranslating => isTranslationInProgress;
         
         public static event Action? TranslationLogged;
+        public static event Action? TranslationStarted;
+        public static event Action? TranslationCompleted;
 
         static Translator()
         {
@@ -163,10 +174,10 @@ namespace LiveCaptionsTranslator
                         Caption.DisplayOriginalCaption = 
                             TextUtil.ShortenDisplaySentence(Caption.DisplayOriginalCaption, TextUtil.LONG_THRESHOLD);
                             
-                        // 调整延迟以提高响应速度
+                        // 优化1: 更激进地减少延迟，提高响应速度
                         lock (delayLock)
                         {
-                            syncLoopDelay = Math.Max(syncLoopDelay - 5, 15);
+                            syncLoopDelay = Math.Max(syncLoopDelay - 8, 10);
                         }
                     }
                     else
@@ -186,20 +197,60 @@ namespace LiveCaptionsTranslator
                     // 更新 OriginalCaption 并决定是否翻译
                     if (Caption.OriginalCaption.CompareTo(latestCaption) != 0)
                     {
+                        // 优化2: 检测增量更新场景
+                        bool isIncremental = Caption.OriginalCaption.StartsWith(previousOriginalCaption) && 
+                                           Caption.OriginalCaption.Length > previousOriginalCaption.Length;
+                                           
+                        string oldCaption = Caption.OriginalCaption;
                         Caption.OriginalCaption = latestCaption;
                         previousOriginalCaption = latestCaption;
                         
                         idleCount = 0;
+                        
+                        // 优化3: 改进翻译触发条件
+                        bool shouldTranslate = false;
+                        TranslationTaskQueue.TaskPriority priority = TranslationTaskQueue.TaskPriority.Normal;
+                        
+                        // 如果是完整句子，立即高优先级翻译
                         if (Array.IndexOf(TextUtil.PUNC_EOS, Caption.OriginalCaption[^1]) != -1)
                         {
-                            // 如果是完整句子，立即添加到翻译队列
+                            shouldTranslate = true;
+                            priority = TranslationTaskQueue.TaskPriority.High;
                             syncCount = 0;
-                            pendingTextQueue.Enqueue(Caption.OriginalCaption);
+                        }
+                        // 当文本变化超过一定字符数，触发普通优先级翻译
+                        else if (Math.Abs(Caption.OriginalCaption.Length - oldCaption.Length) > 10)
+                        {
+                            shouldTranslate = true;
+                        }
+                        // 如果是增量更新且距离上次翻译时间不长，使用增量翻译
+                        else if (isIncremental && 
+                                (DateTime.Now - lastTranslationTime) < INCREMENTAL_THRESHOLD)
+                        {
+                            // 提交增量翻译请求
+                            pendingTextQueue.Enqueue(new TranslationRequest
+                            {
+                                Text = Caption.OriginalCaption,
+                                PreviousText = previousOriginalCaption,
+                                IsIncremental = true,
+                                Priority = TranslationTaskQueue.TaskPriority.Normal
+                            });
                         }
                         else if (Encoding.UTF8.GetByteCount(Caption.OriginalCaption) >= TextUtil.SHORT_THRESHOLD)
                         {
                             // 如果长度足够但不是完整句子，增加计数器
                             syncCount++;
+                        }
+                        
+                        if (shouldTranslate)
+                        {
+                            pendingTextQueue.Enqueue(new TranslationRequest
+                            {
+                                Text = Caption.OriginalCaption,
+                                PreviousText = oldCaption,
+                                IsIncremental = isIncremental,
+                                Priority = priority
+                            });
                         }
                     }
                     else
@@ -212,7 +263,13 @@ namespace LiveCaptionsTranslator
                         idleCount == Setting.MaxIdleInterval)
                     {
                         syncCount = 0;
-                        pendingTextQueue.Enqueue(Caption.OriginalCaption);
+                        pendingTextQueue.Enqueue(new TranslationRequest
+                        {
+                            Text = Caption.OriginalCaption,
+                            PreviousText = string.Empty,
+                            IsIncremental = false,
+                            Priority = TranslationTaskQueue.TaskPriority.Low
+                        });
                     }
                     
                     // 自适应延迟，减少 CPU 使用
@@ -272,42 +329,96 @@ namespace LiveCaptionsTranslator
                         }
                     }
 
+                    // 优化4: 智能任务取消，仅保留最新/最高优先级的任务
+                    if (pendingTextQueue.Count > 1)
+                    {
+                        var newerRequests = new List<TranslationRequest>();
+                        while (pendingTextQueue.Count > 0)
+                        {
+                            newerRequests.Add(pendingTextQueue.Dequeue());
+                        }
+                        
+                        // 根据优先级和时间戳排序
+                        newerRequests = newerRequests
+                            .OrderByDescending(r => (int)r.Priority)
+                            .ThenBy(r => r.IsIncremental ? 0 : 1)
+                            .ToList();
+                            
+                        // 只保留最重要的1-2个请求
+                        var keptRequests = newerRequests.Take(newerRequests.Count > 3 ? 2 : 1).ToList();
+                        
+                        // 取消队列中正在进行的较旧任务
+                        translationTaskQueue.CancelOlderTasks();
+                        
+                        // 重新添加保留的请求
+                        foreach (var request in keptRequests)
+                        {
+                            pendingTextQueue.Enqueue(request);
+                        }
+                    }
+                    
                     if (pendingTextQueue.Count > 0)
                     {
-                        var originalText = pendingTextQueue.Dequeue();
-                        bool hasEndPunctuation = Array.IndexOf(TextUtil.PUNC_EOS, originalText[^1]) != -1;
+                        var request = pendingTextQueue.Dequeue();
                         
-                        // 决定翻译优先级
-                        var priority = hasEndPunctuation ? 
-                            TranslationTaskQueue.TaskPriority.High : 
-                            TranslationTaskQueue.TaskPriority.Normal;
-
                         // 处理翻译或记录
                         if (LogOnlyFlag)
                         {
-                            bool isOverwrite = await IsOverwrite(originalText);
-                            await LogOnly(originalText, isOverwrite);
+                            bool isOverwrite = await IsOverwrite(request.Text);
+                            await LogOnly(request.Text, isOverwrite);
                             Caption.TranslatedCaption = string.Empty;
                             Caption.DisplayTranslatedCaption = "[Paused]";
                         }
                         else
                         {
-                            // 加入翻译队列
-                            translationTaskQueue.Enqueue(
-                                token => Task.Run(() => Translate(originalText, token), token), 
-                                originalText,
-                                priority);
+                            // 优化5: 使用增量翻译和状态指示
+                            isTranslationInProgress = true;
+                            TranslationStarted?.Invoke();
+                            
+                            // 更新UI显示状态
+                            if (!string.IsNullOrEmpty(Caption.TranslatedCaption))
+                            {
+                                Caption.DisplayTranslatedCaption = Caption.TranslatedCaption + " ...";
+                            }
+                            
+                            // 选择合适的翻译方法
+                            if (request.IsIncremental && 
+                                !string.IsNullOrEmpty(lastTranslatedText) &&
+                                (DateTime.Now - lastTranslationTime) < INCREMENTAL_THRESHOLD)
+                            {
+                                // 使用增量翻译
+                                translationTaskQueue.EnqueueIncrementalTranslation(
+                                    request.PreviousText, 
+                                    request.Text, 
+                                    lastTranslatedText,
+                                    request.Priority);
+                            }
+                            else
+                            {
+                                // 使用完整翻译
+                                translationTaskQueue.Enqueue(
+                                    token => Task.Run(() => Translate(request.Text, token), token), 
+                                    request.Text,
+                                    request.Priority);
+                            }
                                 
-                            // 更新界面显示
+                            // 更新界面显示和状态
                             if (!string.IsNullOrEmpty(translationTaskQueue.Output))
                             {
+                                lastTranslatedText = translationTaskQueue.Output;
+                                lastTranslationTime = DateTime.Now;
+                                
                                 Caption.TranslatedCaption = translationTaskQueue.Output;
                                 Caption.DisplayTranslatedCaption = 
                                     TextUtil.ShortenDisplaySentence(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
+                                    
+                                isTranslationInProgress = false;
+                                TranslationCompleted?.Invoke();
                             }
                         }
 
                         // 如果是完整句子，暂停以获得更好的视觉体验
+                        bool hasEndPunctuation = Array.IndexOf(TextUtil.PUNC_EOS, request.Text[^1]) != -1;
                         if (hasEndPunctuation)
                         {
                             // 完整句子使用较短暂停
@@ -334,11 +445,15 @@ namespace LiveCaptionsTranslator
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Error] TranslateLoop error: {ex.Message}");
+                    isTranslationInProgress = false;
                     await Task.Delay(1000); // 错误后短暂等待
                 }
             }
         }
 
+        /// <summary>
+        /// 翻译指定文本
+        /// </summary>
         public static async Task<string> Translate(string text, CancellationToken token = default)
         {
             if (string.IsNullOrEmpty(text))
@@ -352,7 +467,7 @@ namespace LiveCaptionsTranslator
                     sw = Stopwatch.StartNew();
                 }
 
-                // 调用翻译 API，这里使用了改进后的 API 调用方法
+                // 调用翻译 API
                 string translatedText = await TranslateAPI.TranslateFunction(text, token);
 
                 if (sw != null)
@@ -373,6 +488,36 @@ namespace LiveCaptionsTranslator
             {
                 Console.WriteLine($"[Error] Translation failed: {ex.Message}");
                 return $"[Translation Failed] {ex.Message}";
+            }
+        }
+        
+        /// <summary>
+        /// 增量翻译，处理新增内容
+        /// </summary>
+        public static async Task<string> TranslateIncremental(string fullText, string incrementalText, 
+                                                            string previousTranslation, CancellationToken token = default)
+        {
+            if (string.IsNullOrEmpty(incrementalText))
+                return previousTranslation;
+                
+            try
+            {
+                // 处理增量部分
+                string incrementalTranslation = await TranslateAPI.TranslateFunction(incrementalText, token);
+                
+                // 简单的拼接策略 - 实际项目中可能需要更复杂的合并逻辑
+                return previousTranslation + " " + incrementalTranslation;
+            }
+            catch (OperationCanceledException ex)
+            {
+                if (token.IsCancellationRequested)
+                    return string.Empty;
+                return previousTranslation;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] Incremental translation failed: {ex.Message}");
+                return previousTranslation;
             }
         }
 
@@ -478,7 +623,7 @@ namespace LiveCaptionsTranslator
             }
         }
         
-        // 新增方法：在应用程序退出时清理资源
+        // 在应用程序退出时清理资源
         public static async Task Cleanup()
         {
             try
@@ -501,5 +646,17 @@ namespace LiveCaptionsTranslator
                 Console.WriteLine($"[Error] Cleanup failed: {ex.Message}");
             }
         }
+    }
+    
+    /// <summary>
+    /// 翻译请求模型
+    /// </summary>
+    public class TranslationRequest
+    {
+        public string Text { get; set; } = string.Empty;
+        public string PreviousText { get; set; } = string.Empty;
+        public bool IsIncremental { get; set; } = false;
+        public TranslationTaskQueue.TaskPriority Priority { get; set; } = TranslationTaskQueue.TaskPriority.Normal;
+        public DateTime Timestamp { get; set; } = DateTime.Now;
     }
 }

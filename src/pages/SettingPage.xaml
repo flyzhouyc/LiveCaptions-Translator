@@ -302,6 +302,85 @@
                     Value="{Binding CurrentAPIConfig.Port, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
         </Grid>
+        <!-- 添加到 SettingPage.xaml 的 Grid x:Name="NoSettingGrid" 之后，与之同级 -->
+
+        <Grid x:Name="AdvancedSettingsGrid" Grid.Column="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Row="0"
+                Grid.Column="0"
+                Margin="15,0,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Incremental Translation" />
+                <ui:ToggleSwitch
+                    Width="120"
+                    Height="30"
+                    Margin="0,0,0,0"
+                    Padding="10,4,10,7"
+                    IsChecked="{Binding EnableIncrementalTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    OffContent="Off"
+                    OnContent="On" />
+            </StackPanel>
+            
+            <StackPanel
+                Grid.Row="1"
+                Grid.Column="0"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Adaptive Response" />
+                <ui:ToggleSwitch
+                    Width="120"
+                    Height="30"
+                    Margin="0,0,0,0"
+                    Padding="10,4,10,7"
+                    IsChecked="{Binding AdaptiveResponseTime, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    OffContent="Off"
+                    OnContent="On" />
+            </StackPanel>
+            
+            <StackPanel
+                Grid.Row="2"
+                Grid.Column="0"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Max Increment Size" />
+                <ui:NumberBox
+                    Width="130"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    ClearButtonEnabled="False"
+                    FontSize="13.3"
+                    Maximum="100"
+                    Minimum="5"
+                    SmallChange="5"
+                    Value="{Binding MaxIncrementalSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+            
+            <StackPanel
+                Grid.Row="3"
+                Grid.Column="0"
+                Margin="15,10,0,0"
+                Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Debug Logging" />
+                <ui:ToggleSwitch
+                    Width="120"
+                    Height="30"
+                    Margin="0,0,0,0"
+                    Padding="10,4,10,7"
+                    IsChecked="{Binding DebugLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    OffContent="Off"
+                    OnContent="On" />
+            </StackPanel>
+        </Grid>
 
         <Grid x:Name="DeepLGrid" Grid.Column="3">
             <Grid.RowDefinitions>
