@@ -739,7 +739,7 @@ namespace LiveCaptionsTranslator.utils
     }
 
     // 原代码中的ConfigDictConverter保持不变
-    ublic class ConfigDictConverter : JsonConverter<Dictionary<string, TranslateAPIConfig>>
+    public class ConfigDictConverter : JsonConverter<Dictionary<string, TranslateAPIConfig>>
     {
         public override Dictionary<string, TranslateAPIConfig> Read(
             ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
