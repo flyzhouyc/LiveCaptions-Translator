@@ -14,6 +14,10 @@ namespace LiveCaptionsTranslator
         private static Caption? caption = null;
         private static Setting? setting = null;
         private static readonly Queue<string> pendingTextQueue = new();
+        private static readonly Queue<string> contextHistory = new(5); // 保存最近5句话作为上下文
+        private static readonly Dictionary<string, int> apiQualityScores = new();
+        private static string lastRecommendedApi = string.Empty;
+        private static readonly Random random = new Random();
 
         public static AutomationElement? Window
         {
@@ -109,8 +113,6 @@ namespace LiveCaptionsTranslator
                     lastEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
                     Caption.OverlayOriginalCaption = fullText.Substring(lastEOSIndex + 1);
                 }
-                // Caption.DisplayOriginalCaption = 
-                //     TextUtil.ShortenDisplaySentence(Caption.OverlayOriginalCaption, TextUtil.VERYLONG_THRESHOLD);
 
                 // `DisplayOriginalCaption`: The sentence to be displayed on Main Window.
                 if (Caption.DisplayOriginalCaption.CompareTo(latestCaption) != 0)
@@ -178,8 +180,14 @@ namespace LiveCaptionsTranslator
                     }
                     else
                     {
+                        // 更新上下文历史
+                        UpdateContextHistory(originalSnapshot);
+
+                        // 确定使用哪个API - 智能选择或尝试建议的API
+                        string apiToUse = DetermineApiToUse();
+
                         translationTaskQueue.Enqueue(token => Task.Run(
-                            () => Translate(originalSnapshot, token), token), originalSnapshot);
+                            () => TranslateWithContext(originalSnapshot, apiToUse, token), token), originalSnapshot);
                     }
 
                     if (LogOnlyFlag)
@@ -198,8 +206,6 @@ namespace LiveCaptionsTranslator
                         string noticePrefix = match.Groups[1].Value;
                         string translatedText = match.Groups[2].Value;
                         Caption.OverlayTranslatedCaption = noticePrefix + Caption.OverlayTranslatedPrefix + translatedText;
-                        // Caption.OverlayTranslatedCaption = 
-                        //     TextUtil.ShortenDisplaySentence(Caption.OverlayTranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
                     }
 
                     // If the original sentence is a complete sentence, pause for better visual experience.
@@ -210,25 +216,154 @@ namespace LiveCaptionsTranslator
             }
         }
 
-        public static async Task<string> Translate(string text, CancellationToken token = default)
+        // 更新用于上下文的历史句子
+        private static void UpdateContextHistory(string sentence)
         {
-            string translatedText;
+            if (!string.IsNullOrWhiteSpace(sentence))
+            {
+                // 保持队列最大长度为5
+                while (contextHistory.Count >= 5)
+                    contextHistory.Dequeue();
+                
+                contextHistory.Enqueue(sentence);
+            }
+        }
+
+        // 确定当前应该使用哪个API
+        private static string DetermineApiToUse()
+        {
+            string currentApi = Translator.Setting.ApiName;
+            
+            // 有推荐API且质量评分高于当前API时，有20%概率尝试推荐的API
+            if (!string.IsNullOrEmpty(lastRecommendedApi) && 
+                lastRecommendedApi != currentApi && 
+                apiQualityScores.TryGetValue(lastRecommendedApi, out int recommendedScore) &&
+                (!apiQualityScores.TryGetValue(currentApi, out int currentScore) || recommendedScore > currentScore) &&
+                random.Next(100) < 20)
+            {
+                return lastRecommendedApi;
+            }
+            
+            // 否则使用用户设置的API
+            return currentApi;
+        }
+
+        // 带上下文的翻译方法
+        public static async Task<string> TranslateWithContext(string text, string apiName, CancellationToken token = default)
+        {
             try
             {
-                var sw = Setting.MainWindow.LatencyShow? Stopwatch.StartNew() : null;
-                translatedText = await TranslateAPI.TranslateFunction(text, token);
+                var sw = Setting.MainWindow.LatencyShow ? Stopwatch.StartNew() : null;
+                
+                string translatedText;
+                string sourceLanguage = "auto";
+                string targetLanguage = Setting.TargetLanguage;
+                
+                // 构建上下文文本 (仅对LLM类API)
+                if (IsLLMBasedAPI(apiName) && contextHistory.Count > 1)
+                {
+                    // 为LLM创建带上下文的提示词
+                    string contextPrompt = CreateContextPrompt(text, apiName);
+                    translatedText = await TranslateAPI.TranslateWithAPI(contextPrompt, apiName, token);
+                }
+                else
+                {
+                    // 对传统API使用普通翻译方法
+                    translatedText = await TranslateAPI.TranslateWithAPI(text, apiName, token);
+                }
+                
                 if (sw != null)
                 {
                     sw.Stop();
                     translatedText = $"[{sw.ElapsedMilliseconds} ms] " + translatedText;
                 }
+
+                // 评估翻译质量
+                int qualityScore = TranslationQualityEvaluator.EvaluateQuality(text, translatedText);
+                UpdateApiQualityScore(apiName, qualityScore);
+                
+                // 对低质量翻译尝试改进
+                if (qualityScore < 70)
+                {
+                    var (improvedTranslation, apiSuggestion) = TranslationQualityEvaluator.GetImprovedTranslation(
+                        translatedText, text, apiName, qualityScore);
+                    
+                    if (improvedTranslation != translatedText)
+                    {
+                        translatedText = improvedTranslation;
+                    }
+                    
+                    if (apiSuggestion != apiName)
+                    {
+                        // 记录API建议，但不立即切换，让用户或之后的翻译决定是否采用
+                        lastRecommendedApi = apiSuggestion;
+                    }
+                }
+                
+                return translatedText;
+            }
+            catch (OperationCanceledException)
+            {
+                return string.Empty;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Error] Translation failed: {ex.Message}");
                 return $"[Translation Failed] {ex.Message}";
             }
-            return translatedText;
+        }
+
+        // 创建包含上下文的提示词
+        private static string CreateContextPrompt(string text, string apiName)
+        {
+            StringBuilder contextBuilder = new StringBuilder();
+            
+            // 仅使用最近的2-3句话作为上下文
+            int contextSentencesToUse = Math.Min(contextHistory.Count - 1, 2); // 减1是因为当前句子已经在队列里了
+            if (contextSentencesToUse > 0)
+            {
+                contextBuilder.AppendLine("Previous sentences (context):");
+                
+                var contextSentences = contextHistory.Take(contextSentencesToUse).ToArray();
+                for (int i = 0; i < contextSentences.Length; i++)
+                {
+                    contextBuilder.AppendLine($"- {contextSentences[i]}");
+                }
+                
+                contextBuilder.AppendLine("\nCurrent sentence to translate:");
+            }
+            
+            contextBuilder.Append("🔤 ").Append(text).Append(" 🔤");
+            
+            return contextBuilder.ToString();
+        }
+
+        // 判断是否为基于LLM的API
+        private static bool IsLLMBasedAPI(string apiName)
+        {
+            return apiName == "OpenAI" || apiName == "Ollama" || apiName == "OpenRouter";
+        }
+
+        // 更新API质量评分
+        private static void UpdateApiQualityScore(string apiName, int qualityScore)
+        {
+            if (!apiQualityScores.ContainsKey(apiName))
+            {
+                apiQualityScores[apiName] = qualityScore;
+            }
+            else
+            {
+                // 使用加权平均值更新评分，新分数权重为0.2
+                apiQualityScores[apiName] = (int)(apiQualityScores[apiName] * 0.8 + qualityScore * 0.2);
+            }
+
+            TranslationQualityEvaluator.RecordQualityForAPI(
+                apiName, qualityScore, "auto", Setting.TargetLanguage);
+        }
+
+        public static async Task<string> Translate(string text, CancellationToken token = default)
+        {
+            return await TranslateWithContext(text, Setting.ApiName, token);
         }
 
         public static async Task Log(string originalText, string translatedText, 

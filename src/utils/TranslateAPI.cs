@@ -38,19 +38,52 @@ namespace LiveCaptionsTranslator.utils
             Timeout = TimeSpan.FromSeconds(5)
         };
 
+        // 新增方法：根据指定API名称翻译文本
+        public static async Task<string> TranslateWithAPI(string text, string apiName, CancellationToken token = default)
+        {
+            if (TRANSLATE_FUNCTIONS.TryGetValue(apiName, out var translateFunc))
+            {
+                return await translateFunc(text, token);
+            }
+            else
+            {
+                return await TranslateFunction(text, token);
+            }
+        }
+
         public static async Task<string> OpenAI(string text, CancellationToken token = default)
         {
             var config = Translator.Setting.CurrentAPIConfig as OpenAIConfig;
             string language = config.SupportedLanguages.TryGetValue(Translator.Setting.TargetLanguage, out var langValue) 
                 ? langValue 
                 : Translator.Setting.TargetLanguage; 
+            
+            // 检测文本是否包含上下文标记
+            bool hasContext = text.Contains("Previous sentences (context):");
+            string effectivePrompt;
+            
+            if (hasContext)
+            {
+                // 使用更适合处理上下文的增强提示词
+                effectivePrompt = "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
+                                 "provide a fluent and precise translation considering both the context and the current sentence. " +
+                                 $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
+                                 "Maintain the original meaning without omissions or alterations. " +
+                                 "Respond only with the translated sentence without additional explanations.";
+            }
+            else
+            {
+                // 使用标准提示词
+                effectivePrompt = string.Format(Prompt, language);
+            }
+            
             var requestData = new
             {
                 model = config?.ModelName,
                 messages = new BaseLLMConfig.Message[]
                 {
-                    new BaseLLMConfig.Message { role = "system", content = string.Format(Prompt, language)},
-                    new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" }
+                    new BaseLLMConfig.Message { role = "system", content = effectivePrompt },
+                    new BaseLLMConfig.Message { role = "user", content = text }
                 },
                 temperature = config?.Temperature,
                 max_tokens = 64,
@@ -96,13 +129,32 @@ namespace LiveCaptionsTranslator.utils
                 ? langValue 
                 : Translator.Setting.TargetLanguage; 
 
+            // 检测文本是否包含上下文标记
+            bool hasContext = text.Contains("Previous sentences (context):");
+            string effectivePrompt;
+            
+            if (hasContext)
+            {
+                // 使用更适合处理上下文的增强提示词
+                effectivePrompt = "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
+                                 "provide a fluent and precise translation considering both the context and the current sentence. " +
+                                 $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
+                                 "Maintain the original meaning without omissions or alterations. " +
+                                 "Respond only with the translated sentence without additional explanations.";
+            }
+            else
+            {
+                // 使用标准提示词
+                effectivePrompt = string.Format(Prompt, language);
+            }
+
             var requestData = new
             {
                 model = config?.ModelName,
                 messages = new BaseLLMConfig.Message[]
                 {
-                    new BaseLLMConfig.Message { role = "system", content = string.Format(Prompt, language)},
-                    new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" }
+                    new BaseLLMConfig.Message { role = "system", content = effectivePrompt },
+                    new BaseLLMConfig.Message { role = "user", content = text }
                 },
                 temperature = config?.Temperature,
                 max_tokens = 64,
@@ -142,6 +194,25 @@ namespace LiveCaptionsTranslator.utils
         private static async Task<string> Google(string text, CancellationToken token = default)
         {
             var language = Translator.Setting?.TargetLanguage;
+            
+            // 如果文本包含上下文提示，只翻译当前句子部分
+            if (text.Contains("Current sentence to translate:"))
+            {
+                var match = Regex.Match(text, @"Current sentence to translate:\s*🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    text = match.Groups[1].Value;
+                }
+            }
+            else if (text.Contains("🔤"))
+            {
+                // 如果文本包含标记但没有完整的上下文结构，提取标记内容
+                var match = Regex.Match(text, @"🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    text = match.Groups[1].Value;
+                }
+            }
 
             string encodedText = Uri.EscapeDataString(text);
             var url = $"https://clients5.google.com/translate_a/t?" +
@@ -183,6 +254,25 @@ namespace LiveCaptionsTranslator.utils
             string apiKey = "AIzaSyA6EEtrDCfBkHV8uU2lgGY-N383ZgAOo7Y";
             var language = Translator.Setting?.TargetLanguage;
             string strategy = "2";
+            
+            // 如果文本包含上下文提示，只翻译当前句子部分
+            if (text.Contains("Current sentence to translate:"))
+            {
+                var match = Regex.Match(text, @"Current sentence to translate:\s*🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    text = match.Groups[1].Value;
+                }
+            }
+            else if (text.Contains("🔤"))
+            {
+                // 如果文本包含标记但没有完整的上下文结构，提取标记内容
+                var match = Regex.Match(text, @"🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    text = match.Groups[1].Value;
+                }
+            }
 
             string encodedText = Uri.EscapeDataString(text);
             string url = $"https://dictionaryextension-pa.googleapis.com/v1/dictionaryExtensionData?" +
@@ -235,13 +325,32 @@ namespace LiveCaptionsTranslator.utils
             var language = config?.SupportedLanguages[Translator.Setting.TargetLanguage];
             var apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
+            // 检测文本是否包含上下文标记
+            bool hasContext = text.Contains("Previous sentences (context):");
+            string effectivePrompt;
+            
+            if (hasContext)
+            {
+                // 使用更适合处理上下文的增强提示词
+                effectivePrompt = "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
+                                 "provide a fluent and precise translation considering both the context and the current sentence. " +
+                                 $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
+                                 "Maintain the original meaning without omissions or alterations. " +
+                                 "Respond only with the translated sentence without additional explanations.";
+            }
+            else
+            {
+                // 使用标准提示词
+                effectivePrompt = string.Format(Prompt, language);
+            }
+
             var requestData = new
             {
                 model = config?.ModelName,
                 messages = new[]
                 {
-                    new { role = "system", content = string.Format(Prompt, language)},
-                    new { role = "user", content = $"🔤 {text} 🔤" }
+                    new { role = "system", content = effectivePrompt },
+                    new { role = "user", content = text }
                 }
             };
 
@@ -294,6 +403,25 @@ namespace LiveCaptionsTranslator.utils
                 ? langValue 
                 : Translator.Setting.TargetLanguage;
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl);
+
+            // 如果文本包含上下文提示，只翻译当前句子部分
+            if (text.Contains("Current sentence to translate:"))
+            {
+                var match = Regex.Match(text, @"Current sentence to translate:\s*🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    text = match.Groups[1].Value;
+                }
+            }
+            else if (text.Contains("🔤"))
+            {
+                // 如果文本包含标记但没有完整的上下文结构，提取标记内容
+                var match = Regex.Match(text, @"🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    text = match.Groups[1].Value;
+                }
+            }
 
             var requestData = new
             {
