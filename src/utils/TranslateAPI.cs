@@ -2,6 +2,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions; // 添加此行以引入 Regex 类
 
 using LiveCaptionsTranslator.models;
 
