@@ -125,73 +125,134 @@ namespace LiveCaptionsTranslator.utils
 
         public static async Task<string> Ollama(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting?.CurrentAPIConfig as OllamaConfig;
-            var apiUrl = $"http://localhost:{config.Port}/api/chat";
-            string language = config.SupportedLanguages.TryGetValue(Translator.Setting.TargetLanguage, out var langValue) 
-                ? langValue 
-                : Translator.Setting.TargetLanguage; 
-
-            // 检测文本是否包含上下文标记
-            bool hasContext = text.Contains("Previous sentences (context):");
-            string effectivePrompt;
-            
-            if (hasContext)
-            {
-                // 使用更适合处理上下文的增强提示词
-                effectivePrompt = "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
-                                 "provide a fluent and precise translation considering both the context and the current sentence. " +
-                                 $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
-                                 "Maintain the original meaning without omissions or alterations. " +
-                                 "Respond only with the translated sentence without additional explanations." +
-                                 "REMOVE all 🔤 when you output.";
-            }
-            else
-            {
-                // 使用标准提示词
-                effectivePrompt = string.Format(Prompt, language);
-            }
-
-            var requestData = new
-            {
-                model = config?.ModelName,
-                messages = new BaseLLMConfig.Message[]
-                {
-                    new BaseLLMConfig.Message { role = "system", content = effectivePrompt },
-                    new BaseLLMConfig.Message { role = "user", content = text }
-                },
-                temperature = config?.Temperature,
-                max_tokens = 64,
-                stream = false
-            };
-
-            string jsonContent = JsonSerializer.Serialize(requestData);
-            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-            client.DefaultRequestHeaders.Clear();
-
-            HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(apiUrl, content, token);
-            }
-            catch (OperationCanceledException ex)
-            {
-                if (ex.Message.StartsWith("The request"))
+                var config = Translator.Setting?.CurrentAPIConfig as OllamaConfig;
+                if (config == null)
+                    return "[Translation Failed] OllamaConfig is null";
+
+                // 确保端口号有效
+                if (config.Port <= 0 || config.Port > 65535)
+                    return "[Translation Failed] Invalid port number. Please check settings.";
+
+                // 确保有模型名称
+                if (string.IsNullOrEmpty(config.ModelName))
+                    return "[Translation Failed] Model name is missing. Please set a model in settings.";
+
+                var apiUrl = $"http://localhost:{config.Port}/api/chat";
+                
+                string language = config.SupportedLanguages.TryGetValue(Translator.Setting.TargetLanguage, out var langValue) 
+                    ? langValue 
+                    : Translator.Setting.TargetLanguage;
+
+                // 检测文本是否包含上下文标记
+                bool hasContext = text.Contains("Previous sentences (context):");
+                string effectivePrompt;
+                
+                if (hasContext)
+                {
+                    // 使用更适合处理上下文的增强提示词
+                    effectivePrompt = "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
+                                    "provide a fluent and precise translation considering both the context and the current sentence. " +
+                                    $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
+                                    "Maintain the original meaning without omissions or alterations. " +
+                                    "Respond only with the translated sentence without additional explanations." +
+                                    "REMOVE all 🔤 when you output.";
+                }
+                else
+                {
+                    // 使用标准提示词
+                    effectivePrompt = string.Format(Prompt, language);
+                }
+
+                // 简化请求格式，确保与 Ollama API 兼容
+                var requestData = new
+                {
+                    model = config.ModelName,
+                    messages = new[] 
+                    {
+                        new { role = "system", content = effectivePrompt },
+                        new { role = "user", content = text }
+                    },
+                    options = new 
+                    {
+                        temperature = config.Temperature
+                    },
+                    stream = false
+                };
+
+                string jsonContent = JsonSerializer.Serialize(requestData);
+                Console.WriteLine($"Ollama Request: {jsonContent}"); // 调试用
+
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                client.DefaultRequestHeaders.Clear();
+
+                HttpResponseMessage response;
+                try
+                {
+                    response = await client.PostAsync(apiUrl, content, token);
+                }
+                catch (HttpRequestException ex)
+                {
+                    return $"[Translation Failed] Ollama service not available. Make sure it's running at port {config.Port}. Error: {ex.Message}";
+                }
+                catch (OperationCanceledException ex)
+                {
+                    if (ex.Message.StartsWith("The request"))
+                        return $"[Translation Failed] Request timeout: {ex.Message}";
+                    return string.Empty;
+                }
+                catch (Exception ex)
+                {
                     return $"[Translation Failed] {ex.Message}";
-                return string.Empty;
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string responseString = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Ollama Response: {responseString}"); // 调试用
+
+                    try
+                    {
+                        // 使用 JsonDocument 进行更灵活的解析
+                        using var doc = JsonDocument.Parse(responseString);
+                        var root = doc.RootElement;
+
+                        // 尝试多种可能的路径获取内容
+                        if (root.TryGetProperty("message", out var message) && 
+                            message.TryGetProperty("content", out var content1))
+                        {
+                            return content1.GetString();
+                        }
+                        else if (root.TryGetProperty("choices", out var choices) && 
+                                choices.ValueKind == JsonValueKind.Array &&
+                                choices.GetArrayLength() > 0 &&
+                                choices[0].TryGetProperty("message", out var choiceMsg) &&
+                                choiceMsg.TryGetProperty("content", out var content2))
+                        {
+                            return content2.GetString();
+                        }
+                        else
+                        {
+                            // 返回原始响应用于调试
+                            return $"[Translation Failed] Could not parse response. Raw response: {responseString.Substring(0, Math.Min(100, responseString.Length))}...";
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        return $"[Translation Failed] JSON parsing error: {ex.Message}. Raw response: {responseString.Substring(0, Math.Min(100, responseString.Length))}...";
+                    }
+                }
+                else
+                {
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    return $"[Translation Failed] HTTP Error - {response.StatusCode}. Details: {errorContent}";
+                }
             }
             catch (Exception ex)
             {
-                return $"[Translation Failed] {ex.Message}";
+                return $"[Translation Failed] Unexpected error in Ollama translation: {ex.Message}";
             }
-
-            if (response.IsSuccessStatusCode)
-            {
-                string responseString = await response.Content.ReadAsStringAsync();
-                var responseObj = JsonSerializer.Deserialize<OllamaConfig.Response>(responseString);
-                return responseObj.message.content;
-            }
-            else
-                return $"[Translation Failed] HTTP Error - {response.StatusCode}";
         }
 
         private static async Task<string> Google(string text, CancellationToken token = default)
