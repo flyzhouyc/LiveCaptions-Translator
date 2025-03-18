@@ -70,7 +70,8 @@ namespace LiveCaptionsTranslator.utils
                                  "provide a fluent and precise translation considering both the context and the current sentence. " +
                                  $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
                                  "Maintain the original meaning without omissions or alterations. " +
-                                 "Respond only with the translated sentence without additional explanations.";
+                                 "Respond only with the translated sentence without additional explanations." +
+                                 "REMOVE all 🔤 when you output.";
             }
             else
             {
@@ -141,7 +142,8 @@ namespace LiveCaptionsTranslator.utils
                                  "provide a fluent and precise translation considering both the context and the current sentence. " +
                                  $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
                                  "Maintain the original meaning without omissions or alterations. " +
-                                 "Respond only with the translated sentence without additional explanations.";
+                                 "Respond only with the translated sentence without additional explanations." +
+                                 "REMOVE all 🔤 when you output.";
             }
             else
             {
@@ -337,7 +339,8 @@ namespace LiveCaptionsTranslator.utils
                                  "provide a fluent and precise translation considering both the context and the current sentence. " +
                                  $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
                                  "Maintain the original meaning without omissions or alterations. " +
-                                 "Respond only with the translated sentence without additional explanations.";
+                                 "Respond only with the translated sentence without additional explanations." +
+                                 "REMOVE all 🔤 when you output.";
             }
             else
             {
