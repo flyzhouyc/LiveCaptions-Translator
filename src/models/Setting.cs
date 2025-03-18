@@ -14,8 +14,8 @@ namespace LiveCaptionsTranslator.models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private int maxIdleInterval = 20;
-        private int maxSyncInterval = 5;
+        private int maxIdleInterval = 50;
+        private int maxSyncInterval = 3;
 
         private string apiName;
         private string targetLanguage;
@@ -28,61 +28,6 @@ namespace LiveCaptionsTranslator.models
 
         private Dictionary<string, TranslateAPIConfig> configs;
         private TranslateAPIConfig? currentAPIConfig;
-        private bool enableIncrementalTranslation = true;
-        private bool adaptiveResponseTime = true;
-        private int maxIncrementalSize = 30;
-        private bool debugLogging = false;
-        /// <summary>
-        /// 启用增量翻译
-        /// </summary>
-        public bool EnableIncrementalTranslation
-        {
-            get => enableIncrementalTranslation;
-            set
-            {
-                enableIncrementalTranslation = value;
-                OnPropertyChanged("EnableIncrementalTranslation");
-            }
-        }
-
-        /// <summary>
-        /// 启用自适应响应时间
-        /// </summary>
-        public bool AdaptiveResponseTime
-        {
-            get => adaptiveResponseTime;
-            set
-            {
-                adaptiveResponseTime = value;
-                OnPropertyChanged("AdaptiveResponseTime");
-            }
-        }
-
-        /// <summary>
-        /// 最大增量翻译大小 (字符数)
-        /// </summary>
-        public int MaxIncrementalSize
-        {
-            get => maxIncrementalSize;
-            set
-            {
-                maxIncrementalSize = value;
-                OnPropertyChanged("MaxIncrementalSize");
-            }
-        }
-
-        /// <summary>
-        /// 启用调试日志
-        /// </summary>
-        public bool DebugLogging
-        {
-            get => debugLogging;
-            set
-            {
-                debugLogging = value;
-                OnPropertyChanged("DebugLogging");
-            }
-        }
 
         public string ApiName
         {
@@ -197,7 +142,8 @@ namespace LiveCaptionsTranslator.models
                 FontBold = 1,
                 FontShadow = 1,
                 BackgroundColor = 8,
-                Opacity = 151
+                Opacity = 150,
+                HistoryMax = 1
             };
             windowBounds = new Dictionary<string, string>
             {
@@ -345,6 +291,7 @@ namespace LiveCaptionsTranslator.models
         private int fontShadow;
         private int backgroundColor;
         private byte opacity;
+        private int historyMax;
 
         public int FontSize
         {
@@ -398,6 +345,15 @@ namespace LiveCaptionsTranslator.models
             {
                 opacity = value;
                 OnPropertyChanged("Opacity");
+            }
+        }
+        public int HistoryMax
+        {
+            get => historyMax;
+            set
+            {
+                historyMax = value;
+                OnPropertyChanged("HistoryMax");
             }
         }
 

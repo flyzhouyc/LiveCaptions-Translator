@@ -1,9 +1,6 @@
-﻿using System.Windows.Automation;
-using System.Text;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-
 using LiveCaptionsTranslator.utils;
 
 namespace LiveCaptionsTranslator.models
@@ -15,9 +12,8 @@ namespace LiveCaptionsTranslator.models
 
         private string displayOriginalCaption = "";
         private string displayTranslatedCaption = "";
-        private bool isTranslating = false;
-        private string animatedDots = "";
-        private System.Timers.Timer dotsTimer;
+        private string overlayOriginalCaption = "";
+        private string overlayTranslatedCaption = "";
 
         public string OriginalCaption { get; set; } = "";
         public string TranslatedCaption { get; set; } = "";
@@ -32,65 +28,62 @@ namespace LiveCaptionsTranslator.models
         }
         public string DisplayTranslatedCaption
         {
-            get 
-            {
-                // 添加翻译中的动画指示
-                if (isTranslating && !string.IsNullOrEmpty(displayTranslatedCaption))
-                    return displayTranslatedCaption + animatedDots;
-                return displayTranslatedCaption;
-            }
+            get => displayTranslatedCaption;
             set
             {
                 displayTranslatedCaption = value;
                 OnPropertyChanged("DisplayTranslatedCaption");
             }
         }
-        
-        // 翻译状态属性
-        public bool IsTranslating
+        public string OverlayOriginalCaption
         {
-            get => isTranslating;
+            get => overlayOriginalCaption;
             set
             {
-                if (isTranslating != value)
-                {
-                    isTranslating = value;
-                    OnPropertyChanged("IsTranslating");
-                    OnPropertyChanged("DisplayTranslatedCaption");
-                    
-                    // 更新动画定时器状态
-                    if (isTranslating)
-                        dotsTimer.Start();
-                    else
-                    {
-                        dotsTimer.Stop();
-                        animatedDots = "";
-                    }
-                }
+                overlayOriginalCaption = value;
+                OnPropertyChanged("OverlayOriginalCaption");
             }
         }
-
+        public string OverlayTranslatedCaption
+        {
+            get => overlayTranslatedCaption;
+            set
+            {
+                overlayTranslatedCaption = value;
+                OnPropertyChanged("OverlayTranslatedCaption");
+            }
+        }
+        
         public Queue<TranslationHistoryEntry> LogCards { get; } = new(6);
         public IEnumerable<TranslationHistoryEntry> DisplayLogCards => LogCards.Reverse();
 
-        private Caption() 
+        public string OverlayTranslatedPrefix
         {
-            // 初始化动画定时器
-            dotsTimer = new System.Timers.Timer(300);
-            dotsTimer.Elapsed += (s, e) =>
+            get
             {
-                // 更新动画点数
-                animatedDots = animatedDots + ".";
-                if (animatedDots.Length > 3)
-                    animatedDots = "";
-                    
-                // 触发UI更新
-                OnPropertyChanged("DisplayTranslatedCaption");
-            };
-            
-            // 设置自动订阅翻译状态事件
-            Translator.TranslationStarted += () => IsTranslating = true;
-            Translator.TranslationCompleted += () => IsTranslating = false;
+                int historyCount = Math.Min(Translator.Setting.OverlayWindow.HistoryMax, LogCards.Count);
+                if (historyCount <= 0)
+                    return string.Empty;
+                var prefix = DisplayLogCards
+                    .Take(historyCount)
+                    .Reverse()
+                    .Select(entry => entry?.TranslatedText ?? "")
+                    .Aggregate((accu, cur) =>
+                    {
+                        if (!string.IsNullOrEmpty(accu) && Array.IndexOf(TextUtil.PUNC_EOS, accu[^1]) == -1)
+                            accu += TextUtil.isCJChar(accu[^1]) ? "。" : ". ";
+                        cur = Regex.Replace(cur, @"^\[.+\] ", "");
+                        return accu + cur;
+                    });
+                prefix = Regex.Replace(prefix, @"^\[.+\] ", "");
+                if (!string.IsNullOrEmpty(prefix) && Array.IndexOf(TextUtil.PUNC_EOS, prefix[^1]) == -1)
+                    prefix += TextUtil.isCJChar(prefix[^1]) ? "。" : ". ";
+                return prefix;
+            }
+        }
+
+        private Caption()
+        {
         }
 
         public static Caption GetInstance()

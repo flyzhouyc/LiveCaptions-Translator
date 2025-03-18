@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls.Primitives;
@@ -233,12 +232,12 @@ namespace LiveCaptionsTranslator
         
         public void ApplyFontSize()
         {
-            if (Encoding.UTF8.GetByteCount(Translator.Caption.DisplayTranslatedCaption) >= TextUtil.LONG_THRESHOLD)
+            if (Encoding.UTF8.GetByteCount(Translator.Caption.OverlayTranslatedCaption) >= TextUtil.VERYLONG_THRESHOLD)
             {
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    this.OriginalCaption.FontSize = (int)(Translator.Setting.OverlayWindow.FontSize * 0.8);
-                    this.TranslatedCaption.FontSize = (int)(this.OriginalCaption.FontSize * 1.25);
+                    this.OriginalCaption.FontSize = Translator.Setting.OverlayWindow.FontSize;
+                    this.TranslatedCaption.FontSize = (int)(this.OriginalCaption.FontSize * 1.1);
                 }), DispatcherPriority.Background);
             }
             else
