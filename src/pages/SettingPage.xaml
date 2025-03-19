@@ -6,6 +6,7 @@
     xmlns:local="clr-namespace:LiveCaptionsTranslator"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:models="clr-namespace:LiveCaptionsTranslator.models"
     Title="SettingPage"
     JournalEntry.KeepAlive="False"
     mc:Ignorable="d">
@@ -188,6 +189,50 @@
                     IsChecked="{Binding MainWindow.LatencyShow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                     OffContent="Off"
                     OnContent="On" />
+            </StackPanel>
+            
+            <!-- 添加内容类型选择器 -->
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="2.5,0,0,5" Text="Content Type" />
+                    <ui:Flyout x:Name="ContentTypeInfoFlyout">
+                        <TextBlock Width="300" TextWrapping="Wrap">
+                            <Run Text="Choose a content type to optimize translation prompts:" />
+                            <Run Text="&#x0A;- General: Default prompt for most content" />
+                            <Run Text="&#x0A;- Technical: For programming, software, technical documents" />
+                            <Run Text="&#x0A;- Conversation: For casual dialogues and daily conversations" />
+                            <Run Text="&#x0A;- Conference: For formal speeches, presentations, meetings" />
+                            <Run Text="&#x0A;- Media: For news, articles, or media content" />
+                            <Run Text="&#x0A;&#x0A;Note: Auto-detection will try to choose the best type automatically." />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        x:Name="ContentTypeInfo"
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="ContentTypeInfo_MouseEnter"
+                        MouseLeave="ContentTypeInfo_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <ComboBox
+                    x:Name="ContentTypeBox"
+                    Width="150"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    SelectedValue="{Binding PromptTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    SelectionChanged="ContentTypeBox_SelectionChanged">
+                    <ComboBoxItem Content="General" Tag="General" />
+                    <ComboBoxItem Content="Technical" Tag="Technical" />
+                    <ComboBoxItem Content="Conversation" Tag="Conversation" />
+                    <ComboBoxItem Content="Conference" Tag="Conference" />
+                    <ComboBoxItem Content="Media" Tag="Media" />
+                </ComboBox>
             </StackPanel>
         </StackPanel>
 

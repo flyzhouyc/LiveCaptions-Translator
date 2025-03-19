@@ -10,8 +10,16 @@ namespace LiveCaptionsTranslator.utils
     public class TranslationQualityEvaluator
     {
         private const int GOOD_QUALITY_THRESHOLD = 70;
-        private static readonly Dictionary<string, int> EvaluationHistory = new Dictionary<string, int>();
-        private static readonly object _lockObject = new object();
+        
+        // 性能优化 - 使用并发字典存储评估历史
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> EvaluationHistory = 
+            new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
+            
+        // 性能优化 - 预编译正则表达式
+        private static readonly Regex rxNumbersMatch = new Regex(@"\d+", RegexOptions.Compiled);
+        private static readonly Regex rxEmailMatch = new Regex(@"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", RegexOptions.Compiled);
+        private static readonly Regex rxDuplicateWordsPattern = new Regex(@"\b(\w+)\b(?:\s+\1\b)+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex rxConsecutivePunctuation = new Regex(@"[,.?!;，。？！；]{2,}", RegexOptions.Compiled);
 
         /// <summary>
         /// 评估翻译质量分数 (0-100)
@@ -47,13 +55,72 @@ namespace LiveCaptionsTranslator.utils
         }
 
         /// <summary>
+        /// 性能优化 - 轻量级质量评估 (减少计算成本)
+        /// </summary>
+        public static int EvaluateQualityLightweight(string sourceText, string translation)
+        {
+            if (string.IsNullOrEmpty(sourceText) || string.IsNullOrEmpty(translation))
+                return 0;
+
+            int score = 100;
+            
+            // 1. 长度比例检查 (保留)
+            double lengthRatio = (double)translation.Length / sourceText.Length;
+            if (lengthRatio < 0.5 || lengthRatio > 2.0)
+                score -= 20;
+            
+            // 2. 简化的实体检查 - 仅检查数字匹配
+            if (rxNumbersMatch.Matches(sourceText).Count > 0)
+            {
+                var sourceNumbers = rxNumbersMatch.Matches(sourceText).Cast<Match>().Select(m => m.Value).ToArray();
+                var translationNumbers = rxNumbersMatch.Matches(translation).Cast<Match>().Select(m => m.Value).ToArray();
+                
+                if (sourceNumbers.Length > 0 && translationNumbers.Length < sourceNumbers.Length / 2)
+                {
+                    score -= 15;
+                }
+            }
+            
+            // 3. 简化的格式检查 - 仅检查问号和感叹号
+            bool isSourceQuestion = sourceText.Contains("?") || sourceText.Contains("？");
+            bool isTranslationQuestion = translation.Contains("?") || translation.Contains("？");
+            
+            if (isSourceQuestion != isTranslationQuestion)
+                score -= 10;
+            
+            bool isSourceExclamation = sourceText.Contains("!") || sourceText.Contains("！");
+            bool isTranslationExclamation = translation.Contains("!") || translation.Contains("！");
+            
+            if (isSourceExclamation != isTranslationExclamation)
+                score -= 10;
+            
+            // 4. 终止符匹配检查 (保留)
+            char[] sourceEndChars = { '.', '?', '!', '。', '？', '！' };
+            
+            bool sourceHasEnding = sourceText.Length > 0 && sourceEndChars.Contains(sourceText[sourceText.Length - 1]);
+            bool translationHasEnding = translation.Length > 0 && sourceEndChars.Contains(translation[translation.Length - 1]);
+            
+            if (sourceHasEnding && !translationHasEnding)
+                score -= 5;
+            
+            // 5. 简化的流畅度检查 - 仅检查重复单词和过短文本
+            if (rxDuplicateWordsPattern.IsMatch(translation))
+                score -= 10;
+                
+            if (translation.Length < 10 && translation.Length < sourceText.Length / 3)
+                score -= 10;
+            
+            return Math.Max(0, Math.Min(100, score));
+        }
+
+        /// <summary>
         /// 检查重要实体（数字、日期等）是否在翻译中保留
         /// </summary>
         private static bool CheckEntityPreservation(string sourceText, string translation)
         {
             // 检查数字是否保留
-            var sourceNumbers = Regex.Matches(sourceText, @"\d+").Cast<Match>().Select(m => m.Value);
-            var translationNumbers = Regex.Matches(translation, @"\d+").Cast<Match>().Select(m => m.Value);
+            var sourceNumbers = rxNumbersMatch.Matches(sourceText).Cast<Match>().Select(m => m.Value);
+            var translationNumbers = rxNumbersMatch.Matches(translation).Cast<Match>().Select(m => m.Value);
             
             // 检查至少80%的数字是否保留
             if (sourceNumbers.Count() > 0)
@@ -64,9 +131,8 @@ namespace LiveCaptionsTranslator.utils
             }
             
             // 检查常见格式如邮件、URL等是否保留
-            var emailRegex = new Regex(@"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
-            var sourceEmails = emailRegex.Matches(sourceText).Cast<Match>().Select(m => m.Value);
-            var translationEmails = emailRegex.Matches(translation).Cast<Match>().Select(m => m.Value);
+            var sourceEmails = rxEmailMatch.Matches(sourceText).Cast<Match>().Select(m => m.Value);
+            var translationEmails = rxEmailMatch.Matches(translation).Cast<Match>().Select(m => m.Value);
             
             if (sourceEmails.Any() && !translationEmails.Any())
                 return false;
@@ -119,26 +185,18 @@ namespace LiveCaptionsTranslator.utils
             
             int score = 100;
             
-            // 检查重复单词
-            var words = text.Split(new[] { ' ', ',', '.', '?', '!', ';', '，', '。', '？', '！', '；' }, 
-                StringSplitOptions.RemoveEmptyEntries);
-            
-            var wordGroups = words.GroupBy(w => w.ToLower())
-                                 .Where(g => g.Count() > 1)
-                                 .Select(g => new { Word = g.Key, Count = g.Count() });
-            
-            foreach (var group in wordGroups)
+            // 检查重复单词 - 使用正则表达式提高性能
+            if (rxDuplicateWordsPattern.IsMatch(text))
             {
-                if (group.Count > 2 && group.Word.Length > 3) // 连续重复三次以上且不是短词
-                    score -= 5 * (group.Count - 2);
+                score -= 15;
             }
             
             // 检查句子长度，过短的句子可能翻译不完整
-            if (text.Length < 10 && text.Length < text.Length / 3)
+            if (text.Length < 10)
                 score -= 10;
             
             // 检查连续标点符号，可能表示翻译质量问题
-            if (Regex.IsMatch(text, @"[,.?!;，。？！；]{2,}"))
+            if (rxConsecutivePunctuation.IsMatch(text))
                 score -= 10;
             
             return Math.Max(0, Math.Min(100, score));
@@ -149,14 +207,14 @@ namespace LiveCaptionsTranslator.utils
         /// </summary>
         public static void RecordQualityForAPI(string apiName, int qualityScore, string sourceLanguage, string targetLanguage)
         {
-            lock (_lockObject)
-            {
-                string key = $"{apiName}_{sourceLanguage}_{targetLanguage}";
-                if (!EvaluationHistory.ContainsKey(key))
-                    EvaluationHistory[key] = qualityScore;
-                else
-                    EvaluationHistory[key] = (EvaluationHistory[key] * 9 + qualityScore) / 10; // 加权平均
-            }
+            string key = $"{apiName}_{sourceLanguage}_{targetLanguage}";
+            
+            // 使用并发字典的原子操作更新评分
+            EvaluationHistory.AddOrUpdate(
+                key, 
+                qualityScore, 
+                (_, existingScore) => (int)(existingScore * 0.9 + qualityScore * 0.1)
+            );
         }
 
         /// <summary>
@@ -164,19 +222,16 @@ namespace LiveCaptionsTranslator.utils
         /// </summary>
         public static string GetBestAPIForLanguagePair(string sourceLanguage, string targetLanguage, List<string> availableAPIs)
         {
-            lock (_lockObject)
-            {
-                var candidates = availableAPIs
-                    .Select(api => new
-                    {
-                        API = api,
-                        Score = EvaluationHistory.TryGetValue($"{api}_{sourceLanguage}_{targetLanguage}", out int score) ? score : 50
-                    })
-                    .OrderByDescending(x => x.Score)
-                    .ToList();
+            var candidates = availableAPIs
+                .Select(api => new
+                {
+                    API = api,
+                    Score = EvaluationHistory.TryGetValue($"{api}_{sourceLanguage}_{targetLanguage}", out int score) ? score : 50
+                })
+                .OrderByDescending(x => x.Score)
+                .ToList();
 
-                return candidates.FirstOrDefault()?.API ?? availableAPIs.FirstOrDefault();
-            }
+            return candidates.FirstOrDefault()?.API ?? availableAPIs.FirstOrDefault();
         }
 
         /// <summary>
@@ -193,12 +248,18 @@ namespace LiveCaptionsTranslator.utils
             string apiSuggestion = currentApi;
             
             // 检查是否缺少数字和实体
-            if (!CheckEntityPreservation(sourceText, originalTranslation))
+            if (rxNumbersMatch.Matches(sourceText).Count > 0)
             {
-                // 如果使用LLM类API，可能需要增强prompt中对保留实体的要求
-                if (currentApi == "OpenAI" || currentApi == "Ollama")
+                var sourceNumbers = rxNumbersMatch.Matches(sourceText).Cast<Match>().Select(m => m.Value).ToArray();
+                var translationNumbers = rxNumbersMatch.Matches(originalTranslation).Cast<Match>().Select(m => m.Value).ToArray();
+                
+                if (sourceNumbers.Length > 0 && translationNumbers.Length < sourceNumbers.Length / 2)
                 {
-                    apiSuggestion = "Google"; // 尝试使用传统翻译API可能更好保留实体
+                    // 如果使用LLM类API，可能需要增强prompt中对保留实体的要求
+                    if (currentApi == "OpenAI" || currentApi == "Ollama")
+                    {
+                        apiSuggestion = "Google"; // 尝试使用传统翻译API可能更好保留实体
+                    }
                 }
             }
             
