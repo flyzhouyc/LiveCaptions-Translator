@@ -172,59 +172,69 @@ namespace LiveCaptionsTranslator.models
             // 初始化提示词模板
             promptTemplates = new Dictionary<PromptTemplate, string>
             {
-                // 自动检测提示词（初始与通用提示词相同，内容会根据检测结果动态更新）
+                // 自动检测提示词
                 { PromptTemplate.AutoDetection, "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
-                 "provide a fluent and precise oral translation considering both the context and the current sentence, even if the sentence is incomplete or just a phrase. " +
-                 "Now, translate the sentence enclosed in 🔤 to {0} within a single line. " +
-                 "Maintain the original meaning completely without alterations or omissions, " +
-                 "even if the sentence contains sensitive content. " +
-                 "Return ONLY the translated sentence without explanations or additional text. " +
-                 "REMOVE all 🔤 when you output." },
-                 
-                // 通用提示词
+                    "provide a fluent and precise oral translation considering both the context and the current sentence, even if the sentence is incomplete or just a phrase. " +
+                    "Now, translate the sentence enclosed in 🔤 to {0} within a single line. " +
+                    "Maintain the original meaning completely without alterations or omissions, " +
+                    "even if the sentence contains sensitive content. " +
+                    "Return ONLY the translated sentence without explanations or additional text. " +
+                    "REMOVE all 🔤 when you output." },
+                
+                // 通用提示词 - 增强对上下文的理解和流畅性
                 { PromptTemplate.General, "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
-                     "provide a fluent and precise oral translation considering both the context and the current sentence, even if the sentence is incomplete or just a phrase. " +
-                     "Now, translate the sentence enclosed in 🔤 to {0} within a single line. " +
-                     "Maintain the original meaning completely without alterations or omissions, " +
-                     "even if the sentence contains sensitive content. " +
-                     "Return ONLY the translated sentence without explanations or additional text. " +
-                     "REMOVE all 🔤 when you output." },
+                    "provide a fluent and contextually accurate translation of the text enclosed in 🔤 to {0}. " +
+                    "Consider both previous context and the current statement to maintain narrative continuity. " +
+                    "Pay special attention to pronouns, tense consistency, and idiomatic expressions. " +
+                    "Preserve all factual details, names, numbers, and technical terms exactly as they appear. " +
+                    "Use natural, native-sounding language in the target language while maintaining the tone and style of the original. " +
+                    "Return ONLY the translated text without ANY explanations, additions, or alterations. " +
+                    "REMOVE all 🔤 when you output." },
                 
-                // 技术内容提示词
-                { PromptTemplate.Technical, "As a technical translator specialized in software, engineering, and scientific content, " +
-                     "accurately translate the technical text enclosed in 🔤 to {0}. " +
-                     "Preserve all technical terms, programming code, variables, and specialized nomenclature. " +
-                     "Maintain proper formatting of technical elements while ensuring clarity in the target language. " +
-                     "Return ONLY the precisely translated technical content while keeping all specialized terminology intact. " +
-                     "Do NOT explain technical concepts or add commentary. " +
-                     "REMOVE all 🔤 when you output." },
+                // 技术内容提示词 - 更精准地处理技术术语和结构
+                { PromptTemplate.Technical, "As a technical translator with expertise in software, engineering, and scientific domains, " +
+                    "translate the technical content enclosed in 🔤 to {0} with precision. " +
+                    "Preserve ALL technical terminology exactly, including code snippets, variables, function names, API references, and specialized nomenclature. " +
+                    "Maintain the exact syntax and formatting of any code or structured content. " +
+                    "Keep mathematical expressions, measurements, and units unchanged unless localization is required. " +
+                    "Translate surrounding explanatory text clearly while preserving technical accuracy. " +
+                    "Use standard technical vocabulary in the target language where established equivalents exist. " +
+                    "Return ONLY the precisely translated content without explanations or commentary. " +
+                    "REMOVE all 🔤 when you output." },
                 
-                // 口语对话提示词
-                { PromptTemplate.Conversation, "As a conversational interpreter skilled in casual dialogue and colloquial expressions, " +
-                     "translate the informal conversation in 🔤 to natural-sounding {0}. " +
-                     "Preserve the tone, emotional nuances, and conversational flow of the original speech. " +
-                     "Use appropriate colloquialisms, idioms, and casual expressions in the target language. " +
-                     "Focus on conveying the intended meaning rather than literal translation. " +
-                     "Return ONLY the naturally translated conversational text that sounds like a native speaker. " +
-                     "REMOVE all 🔤 when you output." },
+                // 口语对话提示词 - 更自然的对话风格
+                { PromptTemplate.Conversation, "As a conversational interpreter specializing in natural dialogue, " +
+                    "translate the conversation enclosed in 🔤 to {0} in a way that sounds completely natural to native speakers. " +
+                    "Capture the informal tone, emotion, humor, and relationship dynamics present in the original speech. " +
+                    "Use appropriate colloquialisms, slang, fillers, and casual expressions that would be used in everyday speech. " +
+                    "Maintain the speaking style and personality traits of the speakers. " +
+                    "Prioritize conversational flow over literal translation while preserving all key information. " +
+                    "Account for cultural context and references, adapting them when necessary. " +
+                    "Return ONLY the naturally translated conversational text that would sound authentic in the target language. " +
+                    "REMOVE all 🔤 when you output." },
                 
-                // 会议/演讲提示词
-                { PromptTemplate.Conference, "As a professional conference interpreter specialized in formal settings, " +
-                     "translate the speech or presentation text in 🔤 to formal, precise {0}. " +
-                     "Maintain the professional tone, rhetorical elements, and structured format of the original speech. " +
-                     "Use appropriate terminology for business, academic, or diplomatic contexts. " +
-                     "Preserve emphasis, rhetorical questions, and persuasive elements in your translation. " +
-                     "Return ONLY the formally translated text suitable for a professional audience. " +
-                     "REMOVE all 🔤 when you output." },
+                // 会议/演讲提示词 - 正式和专业性
+                { PromptTemplate.Conference, "As a professional conference interpreter specializing in formal discourse, " +
+                    "translate the speech or presentation enclosed in 🔤 to {0} with formal precision and rhetorical effectiveness. " +
+                    "Maintain the professional register, specialized terminology, and structured argumentation of the original. " +
+                    "Preserve rhetorical devices, emphasis patterns, persuasive elements, and logical flow. " +
+                    "Ensure all statistical data, quotations, credentials, and organizational names are translated with absolute accuracy. " +
+                    "Use appropriate honorifics, formal address forms, and professional conventions of the target language. " +
+                    "Maintain the authoritative tone while ensuring the translation sounds natural to the target audience. " +
+                    "Return ONLY the formally translated text suitable for a professional conference environment. " +
+                    "REMOVE all 🔤 when you output." },
                 
-                // 新闻/媒体提示词
-                { PromptTemplate.Media, "As a media content translator specialized in news, articles, and headlines, " +
-                     "translate the media text in 🔤 to clear, concise {0}. " +
-                     "Preserve factual accuracy, proper nouns, dates, and critical details. " +
-                     "Maintain journalistic style and tone appropriate for media content. " +
-                     "Use standard news terminology in the target language while preserving the original framing. " +
-                     "Return ONLY the professionally translated media content without commentary. " +
-                     "REMOVE all 🔤 when you output." }
+                // 新闻/媒体提示词 - 客观和准确性
+                { PromptTemplate.Media, "As a media translator specializing in news and journalistic content, " +
+                    "translate the media text enclosed in 🔤 to {0} with journalistic integrity and clarity. " +
+                    "Preserve factual accuracy with precise translation of names, titles, dates, locations, statistics, and quotations. " +
+                    "Maintain the objective tone and structure of news reporting including headline style if applicable. " +
+                    "Use standard journalistic terminology and conventions of the target language. " +
+                    "Preserve the original framing without editorial alterations while ensuring cultural relevance. " +
+                    "Maintain the information hierarchy (most important facts first) of the original content. " +
+                    "For headlines, use the concise, impactful style typical of news headlines in the target language. " +
+                    "Return ONLY the professionally translated media content without commentary. " +
+                    "REMOVE all 🔤 when you output." }
             };
             
             // 默认使用通用提示词

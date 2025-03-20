@@ -253,32 +253,129 @@ namespace LiveCaptionsTranslator
             // 仅当使用LLM类API时才进行内容类型检测
             if (!IsLLMBasedAPI(Setting.ApiName))
                 return;
-                
+                    
             // 如果不是自动检测模式，则不进行内容类型检测
             if (Setting.PromptTemplate != PromptTemplate.AutoDetection)
                 return;
-                
+                    
             PromptTemplate detectedTemplate = PromptTemplate.General;
             
-            // 技术内容检测
+            // 创建检测计数器，用分数来决定最匹配的类型
+            int technicalScore = 0;
+            int conversationScore = 0;
+            int conferenceScore = 0;
+            int mediaScore = 0;
+            
+            // 技术内容检测 - 增强检测能力
             if (rxTechnicalContent.IsMatch(text))
+            {
+                technicalScore += 2;
+            }
+            
+            // 添加更多技术相关词汇和模式的检测
+            if (Regex.IsMatch(text, @"\b(algorithm|variable|function|method|parameter|server|database|query|API|SDK|framework|library|component|interface|implementation|architecture)\b", RegexOptions.IgnoreCase))
+            {
+                technicalScore += 2;
+            }
+            
+            // 检测代码片段
+            if (Regex.IsMatch(text, @"(if|else|for|while|switch|case|return|try|catch|class|interface)\s*\(") ||
+                Regex.IsMatch(text, @"function\s+\w+\s*\(") ||
+                Regex.IsMatch(text, @"var\s+\w+\s*=") ||
+                Regex.IsMatch(text, @"const\s+\w+\s*="))
+            {
+                technicalScore += 3;
+            }
+            
+            // 口语对话内容检测 - 增强
+            if (rxConversationalContent.IsMatch(text))
+            {
+                conversationScore += 2;
+            }
+            
+            // 添加更多对话特征检测
+            if (Regex.IsMatch(text, @"\b(thanks|thank you|excuse me|sorry|please|by the way|anyway|well|actually|honestly|personally|I mean|you know)\b", RegexOptions.IgnoreCase))
+            {
+                conversationScore += 1;
+            }
+            
+            // 检测问候和告别语
+            if (Regex.IsMatch(text, @"^(Hi|Hello|Hey|Good morning|Good afternoon|Good evening|Bye|Goodbye|See you)", RegexOptions.IgnoreCase))
+            {
+                conversationScore += 2;
+            }
+            
+            // 检测中文口语表达
+            if (Regex.IsMatch(text, @"(嗨|你好|您好|早上好|下午好|晚上好|再见|拜拜|回头见)"))
+            {
+                conversationScore += 2;
+            }
+            
+            // 会议/演讲内容检测 - 增强
+            if (rxConferenceContent.IsMatch(text))
+            {
+                conferenceScore += 2;
+            }
+            
+            // 会议特有词汇和模式
+            if (Regex.IsMatch(text, @"\b(agenda|minutes|presentation|slide|chart|graph|diagram|quarterly|fiscal|strategic|objective|initiative|committee|board|chairperson|delegate|session)\b", RegexOptions.IgnoreCase))
+            {
+                conferenceScore += 2;
+            }
+            
+            // 检测演讲式语言
+            if (Regex.IsMatch(text, @"\b(ladies and gentlemen|thank you for|I'd like to|I am pleased to|let me introduce|in conclusion|to summarize|as you can see)\b", RegexOptions.IgnoreCase))
+            {
+                conferenceScore += 3;
+            }
+            
+            // 新闻内容检测 - 增强
+            if (rxNewsContent.IsMatch(text))
+            {
+                mediaScore += 2;
+            }
+            
+            // 新闻特有词汇和模式
+            if (Regex.IsMatch(text, @"\b(reported|announced|released|published|stated|confirmed|according to|sources say|officials|spokesman|spokesperson|breaking news|latest|update)\b", RegexOptions.IgnoreCase))
+            {
+                mediaScore += 2;
+            }
+            
+            // 检测新闻标题格式
+            if (Regex.IsMatch(text, @"^[A-Z][^.!?]*:|^[A-Z][^.!?]* - "))
+            {
+                mediaScore += 3;
+            }
+            
+            // 句式结构检测 - 复杂正式句式可能是会议/演讲
+            if (text.Length > 100 && Regex.Matches(text, @"[,;:]").Count > 3)
+            {
+                conferenceScore += 1;
+            }
+            
+            // 根据最高分数确定内容类型
+            int maxScore = Math.Max(Math.Max(technicalScore, conversationScore), 
+                                    Math.Max(conferenceScore, mediaScore));
+            
+            if (maxScore == 0)
+            {
+                detectedTemplate = PromptTemplate.General;
+            }
+            else if (maxScore == technicalScore)
             {
                 detectedTemplate = PromptTemplate.Technical;
             }
-            // 会议/演讲内容检测
-            else if (rxConferenceContent.IsMatch(text))
+            else if (maxScore == conversationScore)
+            {
+                detectedTemplate = PromptTemplate.Conversation;
+            }
+            else if (maxScore == conferenceScore)
             {
                 detectedTemplate = PromptTemplate.Conference;
             }
-            // 新闻内容检测
-            else if (rxNewsContent.IsMatch(text))
+            else if (maxScore == mediaScore)
             {
                 detectedTemplate = PromptTemplate.Media;
-            }
-            // 口语对话内容检测
-            else if (rxConversationalContent.IsMatch(text))
-            {
-                detectedTemplate = PromptTemplate.Conversation;
             }
             
             // 更新当前使用的模板（但不改变用户选择的PromptTemplate设置）
@@ -396,11 +493,28 @@ namespace LiveCaptionsTranslator
         // 性能优化 - 更高效的上下文管理
         private static void UpdateContextHistory(string sentence)
         {
-            if (!string.IsNullOrWhiteSpace(sentence))
+            if (string.IsNullOrWhiteSpace(sentence))
+                return;
+                
+            // 使用循环缓冲区，避免队列操作和内存分配
+            contextHistory.Add(sentence);
+            currentContextVersion++; // 增加上下文版本号，使缓存失效
+            
+            // 优化：如果句子结尾有明确的结束标志（如句号），清理不需要的旧上下文
+            // 这有助于避免不相关的旧上下文污染翻译
+            if (sentence.Length > 0 && Array.IndexOf(TextUtil.PUNC_EOS, sentence[sentence.Length - 1]) != -1)
             {
-                // 使用循环缓冲区，避免队列操作和内存分配
-                contextHistory.Add(sentence);
-                currentContextVersion++; // 增加上下文版本号，使缓存失效
+                // 如果是段落结束，可以考虑清理部分历史
+                if (contextHistory.Count > 3 && 
+                (sentence.EndsWith(".") || sentence.EndsWith("。")) && 
+                sentence.Length > 20)
+                {
+                    // 模拟上下文重置，保留最近一句作为过渡
+                    string latestSentence = contextHistory.GetItem(contextHistory.Count - 1);
+                    contextHistory.Clear();
+                    contextHistory.Add(latestSentence);
+                    currentContextVersion++; // 增加版本号使缓存失效
+                }
             }
         }
 
@@ -504,11 +618,25 @@ namespace LiveCaptionsTranslator
             // 智能判断是否需要加入上下文
             bool needsContext = ContextIsRelevant(text);
             
-            // 仅使用最近的2-3句话作为上下文，且只有在需要上下文时
-            int contextSentencesToUse = needsContext ? Math.Min(contextHistory.Count - 1, 2) : 0;
+            // 根据内容类型调整上下文句子数量
+            int contextSentencesToUse = 0;
+            
+            if (needsContext) 
+            {
+                // 调整上下文长度 - 对于技术性和正式场合的内容需要更多上下文
+                if (rxTechnicalContent.IsMatch(text) || rxConferenceContent.IsMatch(text))
+                {
+                    contextSentencesToUse = Math.Min(contextHistory.Count - 1, 3);
+                }
+                else
+                {
+                    contextSentencesToUse = Math.Min(contextHistory.Count - 1, 2);
+                }
+            }
+            
             if (contextSentencesToUse > 0)
             {
-                contextBuilder.AppendLine("Previous sentences (context):");
+                contextBuilder.AppendLine("Previous sentences for context (keeping the continuity of conversation):");
                 
                 var contextItems = contextHistory.GetItems().Take(contextSentencesToUse).ToArray();
                 for (int i = 0; i < contextItems.Length; i++)
@@ -520,7 +648,7 @@ namespace LiveCaptionsTranslator
                     contextBuilder.AppendLine($"- {contextItems[i]}");
                 }
                 
-                contextBuilder.AppendLine("\nCurrent sentence to translate:");
+                contextBuilder.AppendLine("\nCurrent sentence to translate faithfully:");
             }
             
             contextBuilder.Append("🔤 ").Append(text).Append(" 🔤");
@@ -551,21 +679,63 @@ namespace LiveCaptionsTranslator
         // 性能优化 - 智能判断是否需要为文本提供上下文
         private static bool ContextIsRelevant(string text)
         {
-            // 检查文本中是否含有上下文相关的词汇
+            // 过短的文本一般不需要上下文
+            if (text.Length < 5)
+                return false;
+
+            // 检查文本中是否含有上下文相关的词汇（优化检测逻辑）
             string[] words = text.Split(new char[] { ' ', ',', '.', '?', '!', '，', '。', '？', '！' }, 
                 StringSplitOptions.RemoveEmptyEntries);
                 
+            // 快速检查常见代词和连接词
             foreach (string word in words)
             {
-                if (contextKeywords.Contains(word))
+                string lowerWord = word.ToLowerInvariant();
+                // 更全面的代词和连接词检测
+                if (contextKeywords.Contains(lowerWord))
+                {
+                    return true;
+                }
+                
+                // 检查更多指示性词汇
+                if (lowerWord == "then" || lowerWord == "therefore" ||
+                    lowerWord == "thus" || lowerWord == "hence" ||
+                    lowerWord == "consequently" || lowerWord == "so" ||
+                    lowerWord == "因此" || lowerWord == "所以" ||
+                    lowerWord == "那么" || lowerWord == "于是")
                 {
                     return true;
                 }
             }
             
-            // 检查是否有代词起始的句子
-            return Regex.IsMatch(text, @"^\s*(This|That|These|Those|It|They|He|She|I|We|You|The|A|An)\b", 
-                RegexOptions.IgnoreCase);
+            // 检查是否有代词起始的句子 (增加更多模式)
+            if (Regex.IsMatch(text, @"^\s*(This|That|These|Those|It|They|He|She|I|We|You|The|Such|Their|His|Her|Its|Those)\b", 
+                RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+            
+            // 检查中文指示代词
+            if (Regex.IsMatch(text, @"^\s*(这|那|它|他们|她们|我们|你们|其|该)\b"))
+            {
+                return true;
+            }
+            
+            // 检查句子是否似乎是前一句的延续（缺少主语）
+            if (Regex.IsMatch(text, @"^\s*(and|or|but|however|nevertheless|yet|still|moreover|furthermore|also)\b", 
+                RegexOptions.IgnoreCase))
+            {
+                return true; 
+            }
+            
+            // 如果句子非常短，也可能是上下文的一部分
+            if (text.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length < 4 && 
+                !Regex.IsMatch(text, @"\b(yes|no|ok|yeah|nope)\b", RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+            
+            return false;
         }
 
         // 判断是否为基于LLM的API
