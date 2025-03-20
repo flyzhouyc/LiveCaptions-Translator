@@ -845,67 +845,68 @@ namespace LiveCaptionsTranslator
     
     // 性能优化 - 实现高效的循环缓冲区，减少内存分配
     public class CircularBuffer<T>
-{
-    private readonly T[] _buffer;
-    private int _start;
-    private int _count;
-    
-    public int Count => _count;
-    public int Capacity => _buffer.Length;
-    
-    public CircularBuffer(int capacity)
     {
-        _buffer = new T[capacity];
-        _start = 0;
-        _count = 0;
-    }
-    
-    public void Add(T item)
-    {
-        if (_count == _buffer.Length)
+        private readonly T[] _buffer;
+        private int _start;
+        private int _count;
+        
+        public int Count => _count;
+        public int Capacity => _buffer.Length;
+        
+        public CircularBuffer(int capacity)
         {
-            // 缓冲区已满，覆盖最早的项
-            _buffer[_start] = item;
-            _start = (_start + 1) % _buffer.Length;
+            _buffer = new T[capacity];
+            _start = 0;
+            _count = 0;
         }
-        else
+        
+        public void Add(T item)
         {
-            // 缓冲区未满，添加到末尾
-            _buffer[(_start + _count) % _buffer.Length] = item;
-            _count++;
+            if (_count == _buffer.Length)
+            {
+                // 缓冲区已满，覆盖最早的项
+                _buffer[_start] = item;
+                _start = (_start + 1) % _buffer.Length;
+            }
+            else
+            {
+                // 缓冲区未满，添加到末尾
+                _buffer[(_start + _count) % _buffer.Length] = item;
+                _count++;
+            }
         }
-    }
-    
-    public IEnumerable<T> GetItems()
-    {
-        for (int i = 0; i < _count; i++)
+        
+        public IEnumerable<T> GetItems()
         {
-            yield return _buffer[(_start + i) % _buffer.Length];
+            for (int i = 0; i < _count; i++)
+            {
+                yield return _buffer[(_start + i) % _buffer.Length];
+            }
         }
-    }
-    
-    public T GetItem(int index)
-    {
-        if (index < 0 || index >= _count)
-            throw new IndexOutOfRangeException();
-            
-        return _buffer[(_start + index) % _buffer.Length];
-    }
-    
-    // 新增Clear方法
-    public void Clear()
-    {
-        _start = 0;
-        _count = 0;
-    }
-    
-    // 新增Reset方法，可以选择保留一个元素
-    public void Reset(T itemToKeep = default)
-    {
-        Clear();
-        if (itemToKeep != null && !itemToKeep.Equals(default(T)))
+        
+        public T GetItem(int index)
         {
-            Add(itemToKeep);
+            if (index < 0 || index >= _count)
+                throw new IndexOutOfRangeException();
+                
+            return _buffer[(_start + index) % _buffer.Length];
+        }
+        
+        // 新增Clear方法
+        public void Clear()
+        {
+            _start = 0;
+            _count = 0;
+        }
+        
+        // 新增Reset方法，可以选择保留一个元素
+        public void Reset(T itemToKeep = default)
+        {
+            Clear();
+            if (itemToKeep != null && !itemToKeep.Equals(default(T)))
+            {
+                Add(itemToKeep);
+            }
         }
     }
 }
