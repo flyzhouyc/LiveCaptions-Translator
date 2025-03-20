@@ -705,7 +705,7 @@ namespace LiveCaptionsTranslator
             {
                 var sw = Setting.MainWindow.LatencyShow ? Stopwatch.StartNew() : null;
                 
-                string translatedText;
+                string translatedText = string.Empty;
                 string sourceLanguage = "auto";
                 string targetLanguage = Setting.TargetLanguage;
                 
