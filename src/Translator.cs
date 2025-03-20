@@ -32,12 +32,16 @@ namespace LiveCaptionsTranslator
         private static readonly Regex rxAcronymFix2 = new Regex(@"([A-Z])\s*\.\s*([A-Z])(?=[A-Za-z]+)", RegexOptions.Compiled);
         private static readonly Regex rxPunctuationFix = new Regex(@"\s*([.!?,])\s*", RegexOptions.Compiled);
         private static readonly Regex rxAsianPunctuationFix = new Regex(@"\s*([。！？，、])\s*", RegexOptions.Compiled);
-        
-        // 识别内容类型的正则表达式
-        private static readonly Regex rxTechnicalContent = new Regex(@"(function|class|method|API|algorithm|code|software|hardware|\bSQL\b|\bJSON\b|\bHTML\b|\bCSS\b|\bAPI\b|\bC\+\+\b|\bJava\b|\bPython\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex rxConversationalContent = new Regex(@"(\bhey\b|\bhi\b|\bhello\b|\bwhat's up\b|\bhow are you\b|\bnice to meet\b|\btalk to you|\bchit chat\b|\bbye\b|\bsee you\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex rxConferenceContent = new Regex(@"(\bpresent\b|\bconference\b|\bmeeting\b|\bstatement\b|\bannounce\b|\binvestor\b|\bstakeholder\b|\bcolleagues\b|\banalyst\b|\breport\b|\bresearch\b|\bprofessor\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex rxNewsContent = new Regex(@"(\breport\b|\bnews\b|\bheadline\b|\btoday\b|\bbreaking\b|\banalysis\b|\bstudy finds\b|\baccording to\b|\binvestigation\b|\bofficial\b|\bstatement\b|\bpress\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // 识别内容类型的正则表达式 - 增强版本
+        private static readonly Regex rxTechnicalContent = new Regex(@"(function|class|method|API|algorithm|code|software|hardware|\bSQL\b|\bJSON\b|\bHTML\b|\bCSS\b|\bAPI\b|\bC\+\+\b|\bJava\b|\bPython\b|\bserver\b|\bdatabase\b|\bquery\b|\bframework\b|\blibrary\b|\bcomponent\b|\binterface\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex rxConversationalContent = new Regex(@"(\bhey\b|\bhi\b|\bhello\b|\bwhat's up\b|\bhow are you\b|\bnice to meet\b|\btalk to you|\bchit chat\b|\bbye\b|\bsee you\b|\bthanks\b|\bthank you\b|\bexcuse me\b|\bsorry\b|\bplease\b|\bby the way\b|\bwell\b|\bactually\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex rxConferenceContent = new Regex(@"(\bpresent\b|\bconference\b|\bmeeting\b|\bstatement\b|\bannounce\b|\binvestor\b|\bstakeholder\b|\bcolleagues\b|\banalyst\b|\breport\b|\bresearch\b|\bprofessor\b|\bagenda\b|\bminutes\b|\bslide\b|\bchart\b|\bgraph\b|\bquarterly\b|\bstrategic\b|\bcommittee\b|\bboard\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex rxNewsContent = new Regex(@"(\breport\b|\bnews\b|\bheadline\b|\btoday\b|\bbreaking\b|\banalysis\b|\bstudy finds\b|\baccording to\b|\binvestigation\b|\bofficial\b|\bstatement\b|\bpress\b|\breported\b|\bannounced\b|\breleased\b|\bpublished\b|\bstated\b|\bconfirmed\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // 其他有用的正则表达式
+        private static readonly Regex rxNumbersMatch = new Regex(@"\d+", RegexOptions.Compiled);
+        private static readonly Regex rxUrlPattern = new Regex(@"https?://[^\s]+", RegexOptions.Compiled);
         
         // 上下文重要词检测
         private static readonly HashSet<string> contextKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
@@ -509,10 +513,9 @@ namespace LiveCaptionsTranslator
                 (sentence.EndsWith(".") || sentence.EndsWith("。")) && 
                 sentence.Length > 20)
                 {
-                    // 模拟上下文重置，保留最近一句作为过渡
+                    // 使用Reset方法保留最近一句作为过渡
                     string latestSentence = contextHistory.GetItem(contextHistory.Count - 1);
-                    contextHistory.Clear();
-                    contextHistory.Add(latestSentence);
+                    contextHistory.Reset(latestSentence);
                     currentContextVersion++; // 增加版本号使缓存失效
                 }
             }
@@ -842,51 +845,67 @@ namespace LiveCaptionsTranslator
     
     // 性能优化 - 实现高效的循环缓冲区，减少内存分配
     public class CircularBuffer<T>
+{
+    private readonly T[] _buffer;
+    private int _start;
+    private int _count;
+    
+    public int Count => _count;
+    public int Capacity => _buffer.Length;
+    
+    public CircularBuffer(int capacity)
     {
-        private readonly T[] _buffer;
-        private int _start;
-        private int _count;
-        
-        public int Count => _count;
-        public int Capacity => _buffer.Length;
-        
-        public CircularBuffer(int capacity)
+        _buffer = new T[capacity];
+        _start = 0;
+        _count = 0;
+    }
+    
+    public void Add(T item)
+    {
+        if (_count == _buffer.Length)
         {
-            _buffer = new T[capacity];
-            _start = 0;
-            _count = 0;
+            // 缓冲区已满，覆盖最早的项
+            _buffer[_start] = item;
+            _start = (_start + 1) % _buffer.Length;
         }
-        
-        public void Add(T item)
+        else
         {
-            if (_count == _buffer.Length)
-            {
-                // 缓冲区已满，覆盖最早的项
-                _buffer[_start] = item;
-                _start = (_start + 1) % _buffer.Length;
-            }
-            else
-            {
-                // 缓冲区未满，添加到末尾
-                _buffer[(_start + _count) % _buffer.Length] = item;
-                _count++;
-            }
+            // 缓冲区未满，添加到末尾
+            _buffer[(_start + _count) % _buffer.Length] = item;
+            _count++;
         }
-        
-        public IEnumerable<T> GetItems()
+    }
+    
+    public IEnumerable<T> GetItems()
+    {
+        for (int i = 0; i < _count; i++)
         {
-            for (int i = 0; i < _count; i++)
-            {
-                yield return _buffer[(_start + i) % _buffer.Length];
-            }
+            yield return _buffer[(_start + i) % _buffer.Length];
         }
-        
-        public T GetItem(int index)
+    }
+    
+    public T GetItem(int index)
+    {
+        if (index < 0 || index >= _count)
+            throw new IndexOutOfRangeException();
+            
+        return _buffer[(_start + index) % _buffer.Length];
+    }
+    
+    // 新增Clear方法
+    public void Clear()
+    {
+        _start = 0;
+        _count = 0;
+    }
+    
+    // 新增Reset方法，可以选择保留一个元素
+    public void Reset(T itemToKeep = default)
+    {
+        Clear();
+        if (itemToKeep != null && !itemToKeep.Equals(default(T)))
         {
-            if (index < 0 || index >= _count)
-                throw new IndexOutOfRangeException();
-                
-            return _buffer[(_start + index) % _buffer.Length];
+            Add(itemToKeep);
         }
     }
 }
