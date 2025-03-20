@@ -202,6 +202,10 @@ namespace LiveCaptionsTranslator
             if (!IsLLMBasedAPI(Setting.ApiName))
                 return;
                 
+            // 如果不是自动检测模式，则不进行内容类型检测
+            if (Setting.PromptTemplate != PromptTemplate.AutoDetection)
+                return;
+                
             PromptTemplate detectedTemplate = PromptTemplate.General;
             
             // 技术内容检测
@@ -225,11 +229,8 @@ namespace LiveCaptionsTranslator
                 detectedTemplate = PromptTemplate.Conversation;
             }
             
-            // 如果内容类型与当前模板不同，更新模板
-            if (detectedTemplate != Setting.PromptTemplate)
-            {
-                Setting.PromptTemplate = detectedTemplate;
-            }
+            // 更新当前使用的模板（但不改变用户选择的PromptTemplate设置）
+            Setting.UpdateCurrentPrompt(detectedTemplate);
         }
 
         public static async Task TranslateLoop()

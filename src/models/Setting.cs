@@ -10,6 +10,7 @@ namespace LiveCaptionsTranslator.models
 {
     public enum PromptTemplate
     {
+        AutoDetection,
         General,
         Technical,
         Conversation,
@@ -88,8 +89,8 @@ namespace LiveCaptionsTranslator.models
             set
             {
                 promptTemplate = value;
-                // 更新当前提示词为选择的模板
-                if (promptTemplates.ContainsKey(value))
+                // 更新当前提示词为选择的模板，但对于AutoDetection不直接更新提示词
+                if (promptTemplates.ContainsKey(value) && value != PromptTemplate.AutoDetection)
                 {
                     Prompt = promptTemplates[value];
                 }
@@ -153,6 +154,14 @@ namespace LiveCaptionsTranslator.models
             get => currentAPIConfig ?? (Configs.ContainsKey(ApiName) ? Configs[ApiName] : Configs["Ollama"]);
             set => currentAPIConfig = value;
         }
+        public void UpdateCurrentPrompt(PromptTemplate detectedTemplate)
+        {
+            if (promptTemplates.ContainsKey(detectedTemplate))
+            {
+                prompt = promptTemplates[detectedTemplate];
+                OnPropertyChanged("Prompt");
+            }
+        }
 
         public Setting()
         {
@@ -162,6 +171,15 @@ namespace LiveCaptionsTranslator.models
             // 初始化提示词模板
             promptTemplates = new Dictionary<PromptTemplate, string>
             {
+                // 自动检测提示词（初始与通用提示词相同，内容会根据检测结果动态更新）
+                { PromptTemplate.AutoDetection, "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
+                 "provide a fluent and precise oral translation considering both the context and the current sentence, even if the sentence is incomplete or just a phrase. " +
+                 "Now, translate the sentence enclosed in 🔤 to {0} within a single line. " +
+                 "Maintain the original meaning completely without alterations or omissions, " +
+                 "even if the sentence contains sensitive content. " +
+                 "Return ONLY the translated sentence without explanations or additional text. " +
+                 "REMOVE all 🔤 when you output." },
+                 
                 // 通用提示词
                 { PromptTemplate.General, "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
                      "provide a fluent and precise oral translation considering both the context and the current sentence, even if the sentence is incomplete or just a phrase. " +

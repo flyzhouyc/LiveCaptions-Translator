@@ -198,6 +198,7 @@
                     <ui:Flyout x:Name="ContentTypeInfoFlyout">
                         <TextBlock Width="300" TextWrapping="Wrap">
                             <Run Text="Choose a content type to optimize translation prompts:" />
+                            <Run Text="&#x0A;- Auto-detection: Automatically detect content type" />
                             <Run Text="&#x0A;- General: Default prompt for most content" />
                             <Run Text="&#x0A;- Technical: For programming, software, technical documents" />
                             <Run Text="&#x0A;- Conversation: For casual dialogues and daily conversations" />
@@ -227,6 +228,7 @@
                     FontSize="13.3"
                     SelectedValue="{Binding PromptTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                     SelectionChanged="ContentTypeBox_SelectionChanged">
+                    <ComboBoxItem Content="Auto-detection" Tag="AutoDetection" />
                     <ComboBoxItem Content="General" Tag="General" />
                     <ComboBoxItem Content="Technical" Tag="Technical" />
                     <ComboBoxItem Content="Conversation" Tag="Conversation" />

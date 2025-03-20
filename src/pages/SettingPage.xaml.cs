@@ -34,20 +34,23 @@ namespace LiveCaptionsTranslator
             
             switch (currentPromptTemplate)
             {
-                case PromptTemplate.General:
+                case PromptTemplate.AutoDetection:
                     ContentTypeBox.SelectedIndex = 0;
                     break;
-                case PromptTemplate.Technical:
+                case PromptTemplate.General:
                     ContentTypeBox.SelectedIndex = 1;
                     break;
-                case PromptTemplate.Conversation:
+                case PromptTemplate.Technical:
                     ContentTypeBox.SelectedIndex = 2;
                     break;
-                case PromptTemplate.Conference:
+                case PromptTemplate.Conversation:
                     ContentTypeBox.SelectedIndex = 3;
                     break;
-                case PromptTemplate.Media:
+                case PromptTemplate.Conference:
                     ContentTypeBox.SelectedIndex = 4;
+                    break;
+                case PromptTemplate.Media:
+                    ContentTypeBox.SelectedIndex = 5;
                     break;
                 default:
                     ContentTypeBox.SelectedIndex = 0;
@@ -135,6 +138,9 @@ namespace LiveCaptionsTranslator
                 
             switch (contentType)
             {
+                case "AutoDetection":
+                    Translator.Setting.PromptTemplate = PromptTemplate.AutoDetection;
+                    break;
                 case "General":
                     Translator.Setting.PromptTemplate = PromptTemplate.General;
                     break;
