@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 
 using LiveCaptionsTranslator.utils;
 
@@ -354,28 +355,69 @@ namespace LiveCaptionsTranslator.models
             return setting;
         }
 
-        public void Save()
+        // 新增异步保存方法
+        public async Task SaveAsync()
         {
-            Save(FILENAME);
+            await SaveAsync(FILENAME);
         }
 
-        public void Save(string jsonPath)
+        public async Task SaveAsync(string jsonPath)
         {
-            using (FileStream fileStream = File.Create(jsonPath))
+            try
             {
                 var options = new JsonSerializerOptions
                 {
                     WriteIndented = true,
                     Converters = { new ConfigDictConverter() }
                 };
-                JsonSerializer.Serialize(fileStream, this, options);
+                
+                // 使用内存流先生成JSON，然后一次性写入文件，减少IO操作时间
+                using (var memoryStream = new MemoryStream())
+                {
+                    await JsonSerializer.SerializeAsync(memoryStream, this, options);
+                    memoryStream.Position = 0;
+                    
+                    // 创建临时文件，成功后再替换原文件，避免保存中断导致设置文件损坏
+                    string tempFile = jsonPath + ".tmp";
+                    using (var fileStream = File.Create(tempFile))
+                    {
+                        await memoryStream.CopyToAsync(fileStream);
+                        await fileStream.FlushAsync();
+                    }
+                    
+                    // 文件重命名是原子操作，确保设置文件完整性
+                    if (File.Exists(jsonPath))
+                        File.Delete(jsonPath);
+                    File.Move(tempFile, jsonPath);
+                }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"保存设置失败: {ex.Message}");
+                // 出错时不抛出异常，避免中断UI操作
+            }
+        }
+
+        // 保持原有同步方法，但内部实现优化为异步
+        public void Save()
+        {
+            // 在后台线程启动异步保存，但不阻塞当前线程
+            Task.Run(async () => await SaveAsync()).ConfigureAwait(false);
+        }
+
+        public void Save(string jsonPath)
+        {
+            Task.Run(async () => await SaveAsync(jsonPath)).ConfigureAwait(false);
         }
 
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            Translator.Setting?.Save();
+            if (Translator.Setting != null && Translator.Setting == this)
+            {
+                // 在属性更改时不立即保存，而是安排在适当的时机异步保存
+                Task.Run(async () => await SaveAsync()).ConfigureAwait(false);
+            }
         }
     }
 
@@ -428,7 +470,11 @@ namespace LiveCaptionsTranslator.models
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            Translator.Setting?.Save();
+            if (Translator.Setting != null)
+            {
+                // 使用异步保存减少UI阻塞
+                Task.Run(async () => await Translator.Setting.SaveAsync());
+            }
         }
     }
 
@@ -511,7 +557,11 @@ namespace LiveCaptionsTranslator.models
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            Translator.Setting?.Save();
+            if (Translator.Setting != null)
+            {
+                // 使用异步保存减少UI阻塞
+                Task.Run(async () => await Translator.Setting.SaveAsync());
+            }
         }
     }
 }

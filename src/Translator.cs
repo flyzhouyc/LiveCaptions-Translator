@@ -71,127 +71,179 @@ namespace LiveCaptionsTranslator
         {
             int idleCount = 0;
             int syncCount = 0;
+            int failureCount = 0; // 记录连续失败次数
             
             // 性能优化 - 重用StringBuilder以减少内存分配
             StringBuilder textProcessor = new StringBuilder(1024);
 
             while (true)
             {
-                if (Window == null)
-                {
-                    Thread.Sleep(2000);
-                    continue;
-                }
-
-                string fullText = string.Empty;
                 try
                 {
-                    // Check LiveCaptions.exe still alive
-                    var info = Window.Current;
-                    var name = info.Name;
-                    // Get the text recognized by LiveCaptions (10-20ms)
-                    fullText = LiveCaptionsHandler.GetCaptions(Window);     
-                }
-                catch (ElementNotAvailableException)
-                {
-                    Window = null;
-                    continue;
-                }
-                if (string.IsNullOrEmpty(fullText))
-                    continue;
+                    if (Window == null)
+                    {
+                        Thread.Sleep(2000);
+                        continue;
+                    }
 
-                // 性能优化 - 使用StringBuilder进行文本处理，减少字符串分配
-                textProcessor.Clear();
-                textProcessor.Append(fullText);
-                
-                // Note: For certain languages (such as Japanese), LiveCaptions excessively uses `\n`.
-                // Preprocess - remove the `.` between two uppercase letters. (Cope with acronym)
-                string processedText = rxAcronymFix.Replace(fullText, "$1$2");
-                processedText = rxAcronymFix2.Replace(processedText, "$1 $2");
-                
-                // Preprocess - Remove redundant `\n` around punctuation.
-                processedText = rxPunctuationFix.Replace(processedText, "$1 ");
-                processedText = rxAsianPunctuationFix.Replace(processedText, "$1");
-                
-                // Preprocess - Replace redundant `\n` within sentences with comma or period.
-                processedText = TextUtil.ReplaceNewlines(processedText, TextUtil.MEDIUM_THRESHOLD);
-                
-                // 性能优化 - 内容类型检测和提示词模板选择
-                DetectContentTypeAndUpdatePrompt(processedText);
-                
-                // Prevent adding the last sentence from previous running to log cards
-                // before the first sentence is completed.
-                if (processedText.IndexOfAny(TextUtil.PUNC_EOS) == -1 && Caption.LogCards.Count > 0)
-                {
-                    Caption.LogCards.Clear();
-                    Caption.OnPropertyChanged("DisplayLogCards");
-                }
+                    string fullText = string.Empty;
+                    try
+                    {
+                        // Check LiveCaptions.exe still alive
+                        var info = Window.Current;
+                        var name = info.Name;
+                        // Get the text recognized by LiveCaptions (10-20ms)
+                        fullText = LiveCaptionsHandler.GetCaptions(Window);
+                        
+                        // 重置失败计数
+                        failureCount = 0;     
+                    }
+                    catch (ElementNotAvailableException)
+                    {
+                        Window = null;
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 记录异常但继续尝试
+                        Console.WriteLine($"获取字幕时发生错误: {ex.Message}");
+                        
+                        // 增加失败计数并检查是否超过阈值
+                        failureCount++;
+                        if (failureCount > 5)
+                        {
+                            // 尝试重启LiveCaptions
+                            try
+                            {
+                                Window = LiveCaptionsHandler.LaunchLiveCaptions();
+                                LiveCaptionsHandler.FixLiveCaptions(Window);
+                            }
+                            catch
+                            {
+                                // 忽略重启失败，下一循环会继续尝试
+                            }
+                            failureCount = 0;
+                        }
+                        
+                        Thread.Sleep(500); // 出错时稍微延长等待时间
+                        continue;
+                    }
+                    if (string.IsNullOrEmpty(fullText))
+                        continue;
 
-                // Get the last sentence.
-                int lastEOSIndex;
-                if (Array.IndexOf(TextUtil.PUNC_EOS, processedText[^1]) != -1)
-                    lastEOSIndex = processedText[0..^1].LastIndexOfAny(TextUtil.PUNC_EOS);
-                else
-                    lastEOSIndex = processedText.LastIndexOfAny(TextUtil.PUNC_EOS);
-                string latestCaption = processedText.Substring(lastEOSIndex + 1);
-                
-                // If the last sentence is too short, extend it by adding the previous sentence.
-                // Note: LiveCaptions may generate multiple characters including EOS at once.
-                if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < TextUtil.SHORT_THRESHOLD)
-                {
-                    lastEOSIndex = processedText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
-                    latestCaption = processedText.Substring(lastEOSIndex + 1);
-                }
-                
-                // `OverlayOriginalCaption`: The sentence to be displayed on Overlay Window.
-                Caption.OverlayOriginalCaption = latestCaption;
-                for (int historyCount = Math.Min(Setting.OverlayWindow.HistoryMax, Caption.LogCards.Count);
-                     historyCount > 0 && lastEOSIndex > 0; 
-                     historyCount--)
-                {
-                    lastEOSIndex = processedText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
-                    Caption.OverlayOriginalCaption = processedText.Substring(lastEOSIndex + 1);
-                }
-
-                // `DisplayOriginalCaption`: The sentence to be displayed on Main Window.
-                if (Caption.DisplayOriginalCaption.CompareTo(latestCaption) != 0)
-                {
-                    Caption.DisplayOriginalCaption = latestCaption;
-                    // If the last sentence is too long, truncate it when displayed.
-                    Caption.DisplayOriginalCaption = 
-                        TextUtil.ShortenDisplaySentence(Caption.DisplayOriginalCaption, TextUtil.VERYLONG_THRESHOLD);
-                }
-
-                // Prepare for `OriginalCaption`. If Expanded, only retain the complete sentence.
-                int lastEOS = latestCaption.LastIndexOfAny(TextUtil.PUNC_EOS);
-                if (lastEOS != -1)
-                    latestCaption = latestCaption.Substring(0, lastEOS + 1);
-                // `OriginalCaption`: The sentence to be really translated.
-                if (Caption.OriginalCaption.CompareTo(latestCaption) != 0)
-                {
-                    Caption.OriginalCaption = latestCaption;
+                    // 性能优化 - 使用StringBuilder进行文本处理，减少字符串分配
+                    textProcessor.Clear();
+                    textProcessor.Append(fullText);
                     
-                    idleCount = 0;
-                    if (Array.IndexOf(TextUtil.PUNC_EOS, Caption.OriginalCaption[^1]) != -1)
+                    // Note: For certain languages (such as Japanese), LiveCaptions excessively uses `\n`.
+                    // Preprocess - remove the `.` between two uppercase letters. (Cope with acronym)
+                    string processedText = rxAcronymFix.Replace(fullText, "$1$2");
+                    processedText = rxAcronymFix2.Replace(processedText, "$1 $2");
+                    
+                    // Preprocess - Remove redundant `\n` around punctuation.
+                    processedText = rxPunctuationFix.Replace(processedText, "$1 ");
+                    processedText = rxAsianPunctuationFix.Replace(processedText, "$1");
+                    
+                    // Preprocess - Replace redundant `\n` within sentences with comma or period.
+                    processedText = TextUtil.ReplaceNewlines(processedText, TextUtil.MEDIUM_THRESHOLD);
+                    
+                    // 性能优化 - 内容类型检测和提示词模板选择
+                    DetectContentTypeAndUpdatePrompt(processedText);
+                    
+                    // Prevent adding the last sentence from previous running to log cards
+                    // before the first sentence is completed.
+                    if (processedText.IndexOfAny(TextUtil.PUNC_EOS) == -1 && Caption.LogCards.Count > 0)
+                    {
+                        Caption.LogCards.Clear();
+                        Caption.OnPropertyChanged("DisplayLogCards");
+                    }
+
+                    // Get the last sentence.
+                    int lastEOSIndex;
+                    if (Array.IndexOf(TextUtil.PUNC_EOS, processedText[^1]) != -1)
+                        lastEOSIndex = processedText[0..^1].LastIndexOfAny(TextUtil.PUNC_EOS);
+                    else
+                        lastEOSIndex = processedText.LastIndexOfAny(TextUtil.PUNC_EOS);
+                    string latestCaption = processedText.Substring(lastEOSIndex + 1);
+                    
+                    // If the last sentence is too short, extend it by adding the previous sentence.
+                    // Note: LiveCaptions may generate multiple characters including EOS at once.
+                    if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < TextUtil.SHORT_THRESHOLD)
+                    {
+                        lastEOSIndex = processedText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
+                        latestCaption = processedText.Substring(lastEOSIndex + 1);
+                    }
+                    
+                    // `OverlayOriginalCaption`: The sentence to be displayed on Overlay Window.
+                    Caption.OverlayOriginalCaption = latestCaption;
+                    for (int historyCount = Math.Min(Setting.OverlayWindow.HistoryMax, Caption.LogCards.Count);
+                        historyCount > 0 && lastEOSIndex > 0; 
+                        historyCount--)
+                    {
+                        lastEOSIndex = processedText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
+                        Caption.OverlayOriginalCaption = processedText.Substring(lastEOSIndex + 1);
+                    }
+
+                    // `DisplayOriginalCaption`: The sentence to be displayed on Main Window.
+                    if (Caption.DisplayOriginalCaption.CompareTo(latestCaption) != 0)
+                    {
+                        Caption.DisplayOriginalCaption = latestCaption;
+                        // If the last sentence is too long, truncate it when displayed.
+                        Caption.DisplayOriginalCaption = 
+                            TextUtil.ShortenDisplaySentence(Caption.DisplayOriginalCaption, TextUtil.VERYLONG_THRESHOLD);
+                    }
+
+                    // Prepare for `OriginalCaption`. If Expanded, only retain the complete sentence.
+                    int lastEOS = latestCaption.LastIndexOfAny(TextUtil.PUNC_EOS);
+                    if (lastEOS != -1)
+                        latestCaption = latestCaption.Substring(0, lastEOS + 1);
+                    // `OriginalCaption`: The sentence to be really translated.
+                    if (Caption.OriginalCaption.CompareTo(latestCaption) != 0)
+                    {
+                        Caption.OriginalCaption = latestCaption;
+                        
+                        idleCount = 0;
+                        if (Array.IndexOf(TextUtil.PUNC_EOS, Caption.OriginalCaption[^1]) != -1)
+                        {
+                            syncCount = 0;
+                            pendingTextQueue.Enqueue(Caption.OriginalCaption);
+                        }
+                        else if (Encoding.UTF8.GetByteCount(Caption.OriginalCaption) >= TextUtil.SHORT_THRESHOLD)
+                            syncCount++;
+                    }
+                    else
+                        idleCount++;
+
+                    // `TranslateFlag` determines whether this sentence should be translated.
+                    // When `OriginalCaption` remains unchanged, `idleCount` +1; when `OriginalCaption` changes, `MaxSyncInterval` +1.
+                    if (syncCount > Setting.MaxSyncInterval ||
+                        idleCount == Setting.MaxIdleInterval)
                     {
                         syncCount = 0;
                         pendingTextQueue.Enqueue(Caption.OriginalCaption);
                     }
-                    else if (Encoding.UTF8.GetByteCount(Caption.OriginalCaption) >= TextUtil.SHORT_THRESHOLD)
-                        syncCount++;
+                    Thread.Sleep(25);
                 }
-                else
-                    idleCount++;
-
-                // `TranslateFlag` determines whether this sentence should be translated.
-                // When `OriginalCaption` remains unchanged, `idleCount` +1; when `OriginalCaption` changes, `MaxSyncInterval` +1.
-                if (syncCount > Setting.MaxSyncInterval ||
-                    idleCount == Setting.MaxIdleInterval)
+                catch (Exception ex)
                 {
-                    syncCount = 0;
-                    pendingTextQueue.Enqueue(Caption.OriginalCaption);
+                    // 全局异常处理，确保主循环不会中断
+                    Console.WriteLine($"SyncLoop发生未处理异常: {ex.Message}");
+                    try
+                    {
+                        // 尝试恢复重要状态
+                        if (Window == null)
+                        {
+                            Window = LiveCaptionsHandler.LaunchLiveCaptions();
+                            LiveCaptionsHandler.FixLiveCaptions(Window);
+                            LiveCaptionsHandler.HideLiveCaptions(Window);
+                        }
+                    }
+                    catch
+                    {
+                        // 忽略恢复失败
+                    }
+                    Thread.Sleep(1000); // 出现未知错误时延长等待时间
                 }
-                Thread.Sleep(25);
             }
         }
 
@@ -236,60 +288,108 @@ namespace LiveCaptionsTranslator
         public static async Task TranslateLoop()
         {
             var translationTaskQueue = new TranslationTaskQueue();
+            int errorCount = 0;
 
             while (true)
             {
-                if (Window == null)
+                try
                 {
-                    Caption.DisplayTranslatedCaption = "[WARNING] LiveCaptions was unexpectedly closed, restarting...";
-                    Window = LiveCaptionsHandler.LaunchLiveCaptions();
-                    Caption.DisplayTranslatedCaption = "";
-                }
+                    if (Window == null)
+                    {
+                        Caption.DisplayTranslatedCaption = "[警告] LiveCaptions意外关闭，正在重启...";
+                        Window = LiveCaptionsHandler.LaunchLiveCaptions();
+                        Caption.DisplayTranslatedCaption = "";
+                    }
 
-                if (pendingTextQueue.Count > 0)
+                    if (pendingTextQueue.Count > 0)
+                    {
+                        try
+                        {
+                            var originalSnapshot = pendingTextQueue.Dequeue();
+
+                            try
+                            {
+                                if (LogOnlyFlag)
+                                {
+                                    bool isOverwrite = await IsOverwrite(originalSnapshot);
+                                    await LogOnly(originalSnapshot, isOverwrite);
+                                }
+                                else
+                                {
+                                    // 更新上下文历史
+                                    UpdateContextHistory(originalSnapshot);
+
+                                    // 确定使用哪个API - 智能选择或尝试建议的API
+                                    string apiToUse = DetermineApiToUse();
+
+                                    translationTaskQueue.Enqueue(token => Task.Run(
+                                        () => TranslateWithContext(originalSnapshot, apiToUse, token), token), originalSnapshot);
+                                }
+
+                                // 重置错误计数
+                                errorCount = 0;
+                            }
+                            catch (Exception ex)
+                            {
+                                // 处理翻译过程中的异常
+                                Console.WriteLine($"翻译处理异常: {ex.Message}");
+                                errorCount++;
+                                
+                                // 如果连续发生多次错误，显示错误消息给用户
+                                if (errorCount > 3)
+                                {
+                                    Caption.DisplayTranslatedCaption = $"[翻译服务暂时不可用] {ex.Message}";
+                                }
+                            }
+
+                            if (LogOnlyFlag)
+                            {
+                                Caption.TranslatedCaption = string.Empty;
+                                Caption.DisplayTranslatedCaption = "[已暂停]";
+                                Caption.OverlayTranslatedCaption = "[已暂停]";
+                            }
+                            else if (!string.IsNullOrEmpty(translationTaskQueue.Output))
+                            {
+                                Caption.TranslatedCaption = translationTaskQueue.Output;
+                                Caption.DisplayTranslatedCaption = 
+                                    TextUtil.ShortenDisplaySentence(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
+                                
+                                var match = Regex.Match(Caption.TranslatedCaption, @"^(\[.+\] )?(.*)$");
+                                string noticePrefix = match.Groups[1].Value;
+                                string translatedText = match.Groups[2].Value;
+                                Caption.OverlayTranslatedCaption = noticePrefix + Caption.OverlayTranslatedPrefix + translatedText;
+                            }
+
+                            // If the original sentence is a complete sentence, pause for better visual experience.
+                            if (Array.IndexOf(TextUtil.PUNC_EOS, originalSnapshot[^1]) != -1)
+                                Thread.Sleep(600);
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // 处理队列操作异常，例如在遍历时修改
+                            Thread.Sleep(100);
+                        }
+                    }
+                    Thread.Sleep(40);
+                }
+                catch (Exception ex)
                 {
-                    var originalSnapshot = pendingTextQueue.Dequeue();
-
-                    if (LogOnlyFlag)
+                    // 处理循环中的未知异常
+                    Console.WriteLine($"TranslateLoop发生未处理异常: {ex.Message}");
+                    try
                     {
-                        bool isOverwrite = await IsOverwrite(originalSnapshot);
-                        await LogOnly(originalSnapshot, isOverwrite);
+                        // 尝试恢复翻译状态
+                        if (string.IsNullOrEmpty(Caption.DisplayTranslatedCaption))
+                        {
+                            Caption.DisplayTranslatedCaption = "[系统恢复中...]";
+                        }
                     }
-                    else
+                    catch
                     {
-                        // 更新上下文历史
-                        UpdateContextHistory(originalSnapshot);
-
-                        // 确定使用哪个API - 智能选择或尝试建议的API
-                        string apiToUse = DetermineApiToUse();
-
-                        translationTaskQueue.Enqueue(token => Task.Run(
-                            () => TranslateWithContext(originalSnapshot, apiToUse, token), token), originalSnapshot);
+                        // 忽略恢复失败
                     }
-
-                    if (LogOnlyFlag)
-                    {
-                        Caption.TranslatedCaption = string.Empty;
-                        Caption.DisplayTranslatedCaption = "[Paused]";
-                        Caption.OverlayTranslatedCaption = "[Paused]";
-                    }
-                    else if (!string.IsNullOrEmpty(translationTaskQueue.Output))
-                    {
-                        Caption.TranslatedCaption = translationTaskQueue.Output;
-                        Caption.DisplayTranslatedCaption = 
-                            TextUtil.ShortenDisplaySentence(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
-                        
-                        var match = Regex.Match(Caption.TranslatedCaption, @"^(\[.+\] )?(.*)$");
-                        string noticePrefix = match.Groups[1].Value;
-                        string translatedText = match.Groups[2].Value;
-                        Caption.OverlayTranslatedCaption = noticePrefix + Caption.OverlayTranslatedPrefix + translatedText;
-                    }
-
-                    // If the original sentence is a complete sentence, pause for better visual experience.
-                    if (Array.IndexOf(TextUtil.PUNC_EOS, originalSnapshot[^1]) != -1)
-                        Thread.Sleep(600);
+                    Thread.Sleep(1000);
                 }
-                Thread.Sleep(40);
             }
         }
 

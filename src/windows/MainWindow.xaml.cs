@@ -1,4 +1,6 @@
-﻿using System.Windows;
+﻿using System;
+using System.Threading.Tasks;
+using System.Windows;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
 
@@ -9,6 +11,11 @@ namespace LiveCaptionsTranslator
     public partial class MainWindow : FluentWindow
     {
         public OverlayWindow? OverlayWindow { get; set; } = null;
+        
+        // 窗口调整节流控制
+        private DateTime _lastResizeTime = DateTime.MinValue;
+        private DateTime _lastMoveTime = DateTime.MinValue;
+        private const int ThrottleInterval = 300; // 毫秒
 
         public MainWindow()
         {
@@ -48,10 +55,10 @@ namespace LiveCaptionsTranslator
                 symbolIcon.Symbol = SymbolRegular.TextUnderlineDouble20;
 
                 OverlayWindow = new OverlayWindow();
-                OverlayWindow.SizeChanged +=
-                    (s, e) => WindowHandler.SaveState(OverlayWindow, Translator.Setting);
-                OverlayWindow.LocationChanged +=
-                    (s, e) => WindowHandler.SaveState(OverlayWindow, Translator.Setting);
+                
+                // 使用节流技术处理窗口大小和位置变化事件
+                OverlayWindow.SizeChanged += WindowResizeThrottler;
+                OverlayWindow.LocationChanged += WindowMoveThrottler;
 
                 var windowState = WindowHandler.LoadState(OverlayWindow, Translator.Setting);
                 WindowHandler.RestoreState(OverlayWindow, windowState);
@@ -99,10 +106,40 @@ namespace LiveCaptionsTranslator
             ShowLogCard(Translator.Setting.MainWindow.CaptionLogEnabled);
         }
 
-        private void MainWindow_BoundsChanged(object sender, EventArgs e)
+        // 使用节流处理窗口边界变化事件
+        private async void MainWindow_BoundsChanged(object sender, EventArgs e)
         {
-            var window = sender as Window;
-            WindowHandler.SaveState(window, Translator.Setting);
+            DateTime now = DateTime.Now;
+            // 如果上次保存时间太近，则跳过
+            if ((now - _lastResizeTime).TotalMilliseconds < ThrottleInterval)
+                return;
+                
+            _lastResizeTime = now;
+            await WindowHandler.SaveStateAsync(sender as Window, Translator.Setting);
+        }
+        
+        // 窗口大小变更节流处理器
+        private async void WindowResizeThrottler(object sender, EventArgs e)
+        {
+            DateTime now = DateTime.Now;
+            // 至少300ms间隔才保存状态
+            if ((now - _lastResizeTime).TotalMilliseconds < ThrottleInterval)
+                return;
+                
+            _lastResizeTime = now;
+            await WindowHandler.SaveStateAsync(sender as Window, Translator.Setting);
+        }
+
+        // 窗口位置变更节流处理器
+        private async void WindowMoveThrottler(object sender, EventArgs e)
+        {
+            DateTime now = DateTime.Now;
+            // 至少300ms间隔才保存状态
+            if ((now - _lastMoveTime).TotalMilliseconds < ThrottleInterval)
+                return;
+                
+            _lastMoveTime = now;
+            await WindowHandler.SaveStateAsync(sender as Window, Translator.Setting);
         }
 
         public void ToggleTopmost(bool enabled)

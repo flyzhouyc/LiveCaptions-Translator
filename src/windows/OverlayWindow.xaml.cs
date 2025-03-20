@@ -1,5 +1,8 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -23,6 +26,10 @@ namespace LiveCaptionsTranslator
             {8, Brushes.Black},
         };
         private bool isTranslationOnly = false;
+        
+        // 添加节流控制
+        private DateTime _lastDragTime = DateTime.MinValue;
+        private const int DragThrottleInterval = 50; // 毫秒
         
         public bool IsTranslationOnly
         {
@@ -64,45 +71,90 @@ namespace LiveCaptionsTranslator
             }
         }
 
-        private void TopThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
+        // 节流拖拽操作，优化性能
+        private async void TopThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
         {
+            // 应用节流优化
+            DateTime now = DateTime.Now;
+            if ((now - _lastDragTime).TotalMilliseconds < DragThrottleInterval && e.VerticalChange < 5)
+                return;
+            
+            _lastDragTime = now;
+            
             double newHeight = this.Height - e.VerticalChange;
 
             if (newHeight >= this.MinHeight)
             {
                 this.Top += e.VerticalChange;
                 this.Height = newHeight;
+                
+                // 异步保存窗口状态，不阻塞UI
+                await Task.Delay(DragThrottleInterval);
+                await WindowHandler.SaveStateAsync(this, Translator.Setting);
             }
         }
 
-        private void BottomThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
+        private async void BottomThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
         {
+            // 应用节流优化
+            DateTime now = DateTime.Now;
+            if ((now - _lastDragTime).TotalMilliseconds < DragThrottleInterval && e.VerticalChange < 5)
+                return;
+            
+            _lastDragTime = now;
+            
             double newHeight = this.Height + e.VerticalChange;
 
             if (newHeight >= this.MinHeight)
             {
                 this.Height = newHeight;
+                
+                // 异步保存窗口状态，不阻塞UI
+                await Task.Delay(DragThrottleInterval);
+                await WindowHandler.SaveStateAsync(this, Translator.Setting);
             }
         }
 
-        private void LeftThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
+        private async void LeftThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
         {
+            // 应用节流优化
+            DateTime now = DateTime.Now;
+            if ((now - _lastDragTime).TotalMilliseconds < DragThrottleInterval && e.HorizontalChange < 5)
+                return;
+            
+            _lastDragTime = now;
+            
             double newWidth = this.Width - e.HorizontalChange;
 
             if (newWidth >= this.MinWidth)
             {
                 this.Left += e.HorizontalChange;
                 this.Width = newWidth;
+                
+                // 异步保存窗口状态，不阻塞UI
+                await Task.Delay(DragThrottleInterval);
+                await WindowHandler.SaveStateAsync(this, Translator.Setting);
             }
         }
 
-        private void RightThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
+        private async void RightThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
         {
+            // 应用节流优化
+            DateTime now = DateTime.Now;
+            if ((now - _lastDragTime).TotalMilliseconds < DragThrottleInterval && e.HorizontalChange < 5)
+                return;
+            
+            _lastDragTime = now;
+            
             double newWidth = this.Width + e.HorizontalChange;
 
             if (newWidth >= this.MinWidth)
             {
                 this.Width = newWidth;
+                
+                // 异步保存窗口状态，不阻塞UI
+                await Task.Delay(DragThrottleInterval);
+                await WindowHandler.SaveStateAsync(this, Translator.Setting);
             }
         }
 
@@ -232,50 +284,81 @@ namespace LiveCaptionsTranslator
         
         public void ApplyFontSize()
         {
-            if (Encoding.UTF8.GetByteCount(Translator.Caption.OverlayTranslatedCaption) >= TextUtil.VERYLONG_THRESHOLD)
+            if (Encoding.UTF8.GetByteCount(Translator.Caption?.OverlayTranslatedCaption ?? string.Empty) >= TextUtil.VERYLONG_THRESHOLD)
             {
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    this.OriginalCaption.FontSize = Translator.Setting.OverlayWindow.FontSize;
-                    this.TranslatedCaption.FontSize = (int)(this.OriginalCaption.FontSize * 1.1);
+                    try
+                    {
+                        this.OriginalCaption.FontSize = Translator.Setting.OverlayWindow.FontSize;
+                        this.TranslatedCaption.FontSize = (int)(this.OriginalCaption.FontSize * 1.1);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"调整字体大小时出错: {ex.Message}");
+                    }
                 }), DispatcherPriority.Background);
             }
             else
             {
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    this.OriginalCaption.FontSize = Translator.Setting.OverlayWindow.FontSize;
-                    this.TranslatedCaption.FontSize = (int)(this.OriginalCaption.FontSize * 1.25);
+                    try
+                    {
+                        this.OriginalCaption.FontSize = Translator.Setting.OverlayWindow.FontSize;
+                        this.TranslatedCaption.FontSize = (int)(this.OriginalCaption.FontSize * 1.25);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"调整字体大小时出错: {ex.Message}");
+                    }
                 }), DispatcherPriority.Background);
             }
         }
 
         public void ResizeForTranslationOnly()
         {
-            if (isTranslationOnly)
+            try
             {
-                OriginalCaptionCard.Visibility = Visibility.Collapsed;
-                if (this.MinHeight > 40 && this.Height > 40)
+                if (isTranslationOnly)
                 {
-                    this.MinHeight -= 40;
-                    this.Height -= 40;
-                    this.Top += 40;
+                    OriginalCaptionCard.Visibility = Visibility.Collapsed;
+                    if (this.MinHeight > 40 && this.Height > 40)
+                    {
+                        this.MinHeight -= 40;
+                        this.Height -= 40;
+                        this.Top += 40;
+                    }
                 }
+                else if (OriginalCaptionCard.Visibility == Visibility.Collapsed)
+                {
+                    OriginalCaptionCard.Visibility = Visibility.Visible;
+                    this.Top -= 40;
+                    this.Height += 40;
+                    this.MinHeight += 40;
+                }
+                
+                // 异步保存窗口状态，不阻塞UI
+                Task.Run(async () => await WindowHandler.SaveStateAsync(this, Translator.Setting));
             }
-            else if (OriginalCaptionCard.Visibility == Visibility.Collapsed)
+            catch (Exception ex)
             {
-                OriginalCaptionCard.Visibility = Visibility.Visible;
-                this.Top -= 40;
-                this.Height += 40;
-                this.MinHeight += 40;
+                Console.WriteLine($"调整翻译模式时出错: {ex.Message}");
             }
         }
 
         public void ApplyBackgroundOpacity()
         {
-            Color color = ((SolidColorBrush)BorderBackground.Background).Color;
-            BorderBackground.Background = new SolidColorBrush(
-                Color.FromArgb(Translator.Setting.OverlayWindow.Opacity, color.R, color.G, color.B));
+            try
+            {
+                Color color = ((SolidColorBrush)BorderBackground.Background).Color;
+                BorderBackground.Background = new SolidColorBrush(
+                    Color.FromArgb(Translator.Setting.OverlayWindow.Opacity, color.R, color.G, color.B));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"调整背景透明度时出错: {ex.Message}");
+            }
         }
     }
 }
