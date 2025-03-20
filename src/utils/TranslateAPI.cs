@@ -60,24 +60,29 @@ namespace LiveCaptionsTranslator.utils
                 : Translator.Setting.TargetLanguage; 
             
             // 检测文本是否包含上下文标记
-            bool hasContext = text.Contains("Previous sentences (context):");
+            bool hasContext = text.Contains("Previous sentences");
             string effectivePrompt;
             
             if (hasContext)
             {
                 // 使用更适合处理上下文的增强提示词
                 effectivePrompt = "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
-                                 "provide a fluent and precise translation considering both the context and the current sentence. " +
-                                 $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
-                                 "Maintain the original meaning without omissions or alterations. " +
-                                 "Respond only with the translated sentence without additional explanations." +
-                                 "REMOVE all 🔤 when you output.";
+                                 "provide a fluent and precise translation considering both the provided context and the current sentence. " +
+                                 $"Translate ONLY the current sentence (marked with 🔤) to {language}, ensuring natural continuity with the context. " +
+                                 "Pay special attention to pronouns, references, and logical flow between sentences. " +
+                                 "Maintain the original meaning, tone, and style without omissions or alterations. " +
+                                 "Respond only with the translated sentence without explanations, disclaimers or notes. " +
+                                 "REMOVE all 🔤 markers when you output.";
             }
             else
             {
                 // 使用标准提示词
                 effectivePrompt = string.Format(Prompt, language);
             }
+            
+            // 动态调整参数 - 根据内容和上下文特性
+            double temperature = config.Temperature;
+            int maxTokens = DetermineMaxTokens(text);
             
             var requestData = new
             {
@@ -87,8 +92,8 @@ namespace LiveCaptionsTranslator.utils
                     new BaseLLMConfig.Message { role = "system", content = effectivePrompt },
                     new BaseLLMConfig.Message { role = "user", content = text }
                 },
-                temperature = config?.Temperature,
-                max_tokens = 64,
+                temperature = temperature,
+                max_tokens = maxTokens,
                 stream = false
             };
 
@@ -116,11 +121,54 @@ namespace LiveCaptionsTranslator.utils
             if (response.IsSuccessStatusCode)
             {
                 string responseString = await response.Content.ReadAsStringAsync();
-                var responseObj = JsonSerializer.Deserialize<OpenAIConfig.Response>(responseString);
-                return responseObj.choices[0].message.content;
+                try {
+                    var responseObj = JsonSerializer.Deserialize<OpenAIConfig.Response>(responseString);
+                    string translation = responseObj.choices[0].message.content;
+                    
+                    // 后处理 - 移除可能的解释或前缀
+                    translation = Regex.Replace(translation, @"^Translation: ", "", RegexOptions.IgnoreCase);
+                    translation = Regex.Replace(translation, @"^Translated text: ", "", RegexOptions.IgnoreCase);
+                    translation = Regex.Replace(translation, @"^\[.*?\] ", "");
+                    
+                    return translation;
+                }
+                catch (Exception ex) {
+                    return $"[Translation Failed] Error parsing response: {ex.Message}";
+                }
             }
             else
                 return $"[Translation Failed] HTTP Error - {response.StatusCode}";
+        }
+
+        // 根据文本特性智能确定max_tokens参数
+        private static int DetermineMaxTokens(string text)
+        {
+            // 基础值 - 文本长度的1.5倍，考虑翻译可能膨胀
+            int baseTokens = (int)(text.Length * 1.5);
+            
+            // 最小值
+            baseTokens = Math.Max(baseTokens, 64);
+            
+            // 分析文本特性调整token数量
+            
+            // 如果包含数字、URL或代码片段，可能需要更多token
+            if (Regex.IsMatch(text, @"\d+") || 
+                Regex.IsMatch(text, @"https?://[^\s]+") ||
+                Regex.IsMatch(text, @"[\[\]\(\)\{\}]") ||
+                Regex.IsMatch(text, @"function|class|var|const"))
+            {
+                baseTokens = (int)(baseTokens * 1.2);
+            }
+            
+            // 如果是复杂句式，可能需要更多token
+            if (text.Contains(";") || 
+                Regex.Matches(text, @"[,.!?，。！？]").Count > 3)
+            {
+                baseTokens = (int)(baseTokens * 1.1);
+            }
+            
+            // 如果文本已经很长，为了效率考虑设置上限
+            return Math.Min(baseTokens, 1024);
         }
 
         public static async Task<string> Ollama(string text, CancellationToken token = default)
@@ -146,24 +194,29 @@ namespace LiveCaptionsTranslator.utils
                     : Translator.Setting.TargetLanguage;
 
                 // 检测文本是否包含上下文标记
-                bool hasContext = text.Contains("Previous sentences (context):");
+                bool hasContext = text.Contains("Previous sentences");
                 string effectivePrompt;
                 
                 if (hasContext)
                 {
                     // 使用更适合处理上下文的增强提示词
                     effectivePrompt = "As a professional simultaneous interpreter with specialized knowledge in all fields, " +
-                                    "provide a fluent and precise translation considering both the context and the current sentence. " +
-                                    $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
-                                    "Maintain the original meaning without omissions or alterations. " +
-                                    "Respond only with the translated sentence without additional explanations." +
-                                    "REMOVE all 🔤 when you output.";
+                                    "provide a fluent and precise translation considering both the provided context and the current sentence. " +
+                                    $"Translate ONLY the current sentence (marked with 🔤) to {language}, ensuring natural continuity with the context. " +
+                                    "Pay special attention to pronouns, references, and logical flow between sentences. " +
+                                    "Maintain the original meaning, tone, and style without omissions or alterations. " +
+                                    "Respond only with the translated sentence without explanations, disclaimers or notes. " +
+                                    "REMOVE all 🔤 markers when you output.";
                 }
                 else
                 {
                     // 使用标准提示词
                     effectivePrompt = string.Format(Prompt, language);
                 }
+                
+                // 动态调整参数
+                double temperature = config.Temperature;
+                int maxTokens = DetermineMaxTokens(text);
 
                 // 简化请求格式，确保与 Ollama API 兼容
                 var requestData = new
@@ -176,13 +229,13 @@ namespace LiveCaptionsTranslator.utils
                     },
                     options = new 
                     {
-                        temperature = config.Temperature
+                        temperature = temperature,
+                        num_predict = maxTokens
                     },
                     stream = false
                 };
 
                 string jsonContent = JsonSerializer.Serialize(requestData);
-                Console.WriteLine($"Ollama Request: {jsonContent}"); // 调试用
 
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
                 client.DefaultRequestHeaders.Clear();
@@ -210,7 +263,6 @@ namespace LiveCaptionsTranslator.utils
                 if (response.IsSuccessStatusCode)
                 {
                     string responseString = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"Ollama Response: {responseString}"); // 调试用
 
                     try
                     {
@@ -222,7 +274,14 @@ namespace LiveCaptionsTranslator.utils
                         if (root.TryGetProperty("message", out var message) && 
                             message.TryGetProperty("content", out var content1))
                         {
-                            return content1.GetString();
+                            string translation = content1.GetString();
+                            
+                            // 后处理 - 移除可能的解释或前缀
+                            translation = Regex.Replace(translation, @"^Translation: ", "", RegexOptions.IgnoreCase);
+                            translation = Regex.Replace(translation, @"^Translated text: ", "", RegexOptions.IgnoreCase);
+                            translation = Regex.Replace(translation, @"^\[.*?\] ", "");
+                            
+                            return translation;
                         }
                         else if (root.TryGetProperty("choices", out var choices) && 
                                 choices.ValueKind == JsonValueKind.Array &&
@@ -230,10 +289,34 @@ namespace LiveCaptionsTranslator.utils
                                 choices[0].TryGetProperty("message", out var choiceMsg) &&
                                 choiceMsg.TryGetProperty("content", out var content2))
                         {
-                            return content2.GetString();
+                            string translation = content2.GetString();
+                            
+                            // 后处理 - 移除可能的解释或前缀
+                            translation = Regex.Replace(translation, @"^Translation: ", "", RegexOptions.IgnoreCase);
+                            translation = Regex.Replace(translation, @"^Translated text: ", "", RegexOptions.IgnoreCase);
+                            translation = Regex.Replace(translation, @"^\[.*?\] ", "");
+                            
+                            return translation;
                         }
                         else
                         {
+                            // 尝试一种更简单的提取方式 - 有些Ollama模型可能有不同的响应格式
+                            string rawText = responseString;
+                            var contentMatch = Regex.Match(rawText, @"""content""\s*:\s*""(.*?)""", RegexOptions.Singleline);
+                            if (contentMatch.Success)
+                            {
+                                string translation = contentMatch.Groups[1].Value
+                                    .Replace("\\n", " ")
+                                    .Replace("\\\"", "\"");
+                                
+                                // 后处理 - 移除可能的解释或前缀
+                                translation = Regex.Replace(translation, @"^Translation: ", "", RegexOptions.IgnoreCase);
+                                translation = Regex.Replace(translation, @"^Translated text: ", "", RegexOptions.IgnoreCase);
+                                translation = Regex.Replace(translation, @"^\[.*?\] ", "");
+                                
+                                return translation;
+                            }
+                            
                             // 返回原始响应用于调试
                             return $"[Translation Failed] Could not parse response. Raw response: {responseString.Substring(0, Math.Min(100, responseString.Length))}...";
                         }
@@ -390,7 +473,7 @@ namespace LiveCaptionsTranslator.utils
             var apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
             // 检测文本是否包含上下文标记
-            bool hasContext = text.Contains("Previous sentences (context):");
+            bool hasContext = text.Contains("Previous sentences");
             string effectivePrompt;
             
             if (hasContext)
@@ -400,7 +483,7 @@ namespace LiveCaptionsTranslator.utils
                                  "provide a fluent and precise translation considering both the context and the current sentence. " +
                                  $"Translate only the current sentence to {language}, ensuring continuity with previous context. " +
                                  "Maintain the original meaning without omissions or alterations. " +
-                                 "Respond only with the translated sentence without additional explanations." +
+                                 "Respond only with the translated sentence without explanations or additional text." +
                                  "REMOVE all 🔤 when you output.";
             }
             else

@@ -11,6 +11,10 @@
     JournalEntry.KeepAlive="False"
     mc:Ignorable="d">
 
+    <Page.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </Page.Resources>
+    
     <Grid Margin="15">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -191,7 +195,43 @@
                     OnContent="On" />
             </StackPanel>
             
-            <!-- 添加内容类型选择器 -->
+            <!-- 添加内容自适应模式开关 -->
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock Margin="2.5,0,0,5" Text="Content Adaptive" />
+                    <ui:Flyout x:Name="ContentAdaptiveInfoFlyout">
+                        <TextBlock Width="300" TextWrapping="Wrap">
+                            <Run Text="Enable this feature to automatically adjust translation parameters based on content type to get better translation results." />
+                            <Run Text="&#x0A;For example, for technical content, more precise settings will be used; for conversational content, more natural settings will be used." />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        x:Name="ContentAdaptiveInfo"
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="ContentAdaptiveInfo_MouseEnter"
+                        MouseLeave="ContentAdaptiveInfo_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <ui:ToggleSwitch
+                    x:Name="ContentAdaptiveModeToggle"
+                    Width="100"
+                    Height="30"
+                    Margin="0,0,0,0"
+                    Padding="10,4,10,7"
+                    Checked="ContentAdaptiveModeToggle_Checked"
+                    Unchecked="ContentAdaptiveModeToggle_Checked"
+                    IsChecked="{Binding UseContentAdaptiveMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    OffContent="Off"
+                    OnContent="On" />
+            </StackPanel>
+            
+            <!-- 内容类型选择器 -->
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                     <TextBlock Margin="2.5,0,0,5" Text="Content Type" />
@@ -226,7 +266,6 @@
                     Height="30"
                     Padding="10,4,10,7"
                     FontSize="13.3"
-                    SelectedValue="{Binding PromptTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                     SelectionChanged="ContentTypeBox_SelectionChanged">
                     <ComboBoxItem Content="Auto-detection" Tag="AutoDetection" />
                     <ComboBoxItem Content="General" Tag="General" />
@@ -303,6 +342,65 @@
             </StackPanel>
         </StackPanel>
 
-
+        <!-- 新添加的内容类型参数设置面板 -->
+        <StackPanel Grid.Column="4" Orientation="Vertical">
+            <StackPanel x:Name="TemplateTemperaturePanel" Margin="15,0,0,0" Orientation="Vertical"
+                        Visibility="{Binding UseContentAdaptiveMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Margin="2.5,0,0,5" Text="Content Type Parameters" />
+                <ui:Card Padding="15" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Margin="0,0,0,5" Text="General Content" />
+                        <Slider 
+                            Minimum="0" Maximum="1" 
+                            Value="{Binding TemplateTemperatures[General], Mode=TwoWay}" 
+                            Tag="General"
+                            ValueChanged="TemplateTemperatureSlider_ValueChanged"
+                            TickFrequency="0.1" 
+                            TickPlacement="BottomRight" 
+                            IsSnapToTickEnabled="True" />
+                            
+                        <TextBlock Margin="0,10,0,5" Text="Technical Content" />
+                        <Slider 
+                            Minimum="0" Maximum="1" 
+                            Value="{Binding TemplateTemperatures[Technical], Mode=TwoWay}" 
+                            Tag="Technical"
+                            ValueChanged="TemplateTemperatureSlider_ValueChanged"
+                            TickFrequency="0.1" 
+                            TickPlacement="BottomRight" 
+                            IsSnapToTickEnabled="True" />
+                            
+                        <TextBlock Margin="0,10,0,5" Text="Conversational" />
+                        <Slider 
+                            Minimum="0" Maximum="1" 
+                            Value="{Binding TemplateTemperatures[Conversation], Mode=TwoWay}" 
+                            Tag="Conversation"
+                            ValueChanged="TemplateTemperatureSlider_ValueChanged"
+                            TickFrequency="0.1" 
+                            TickPlacement="BottomRight" 
+                            IsSnapToTickEnabled="True" />
+                            
+                        <TextBlock Margin="0,10,0,5" Text="Conference/Speech" />
+                        <Slider 
+                            Minimum="0" Maximum="1" 
+                            Value="{Binding TemplateTemperatures[Conference], Mode=TwoWay}" 
+                            Tag="Conference"
+                            ValueChanged="TemplateTemperatureSlider_ValueChanged"
+                            TickFrequency="0.1" 
+                            TickPlacement="BottomRight" 
+                            IsSnapToTickEnabled="True" />
+                            
+                        <TextBlock Margin="0,10,0,5" Text="News/Media" />
+                        <Slider 
+                            Minimum="0" Maximum="1" 
+                            Value="{Binding TemplateTemperatures[Media], Mode=TwoWay}" 
+                            Tag="Media"
+                            ValueChanged="TemplateTemperatureSlider_ValueChanged"
+                            TickFrequency="0.1" 
+                            TickPlacement="BottomRight" 
+                            IsSnapToTickEnabled="True" />
+                    </StackPanel>
+                </ui:Card>
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </Page>

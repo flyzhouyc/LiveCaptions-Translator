@@ -32,13 +32,13 @@ namespace LiveCaptionsTranslator
         private static readonly Regex rxAcronymFix2 = new Regex(@"([A-Z])\s*\.\s*([A-Z])(?=[A-Za-z]+)", RegexOptions.Compiled);
         private static readonly Regex rxPunctuationFix = new Regex(@"\s*([.!?,])\s*", RegexOptions.Compiled);
         private static readonly Regex rxAsianPunctuationFix = new Regex(@"\s*([。！？，、])\s*", RegexOptions.Compiled);
-
+        
         // 识别内容类型的正则表达式 - 增强版本
         private static readonly Regex rxTechnicalContent = new Regex(@"(function|class|method|API|algorithm|code|software|hardware|\bSQL\b|\bJSON\b|\bHTML\b|\bCSS\b|\bAPI\b|\bC\+\+\b|\bJava\b|\bPython\b|\bserver\b|\bdatabase\b|\bquery\b|\bframework\b|\blibrary\b|\bcomponent\b|\binterface\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex rxConversationalContent = new Regex(@"(\bhey\b|\bhi\b|\bhello\b|\bwhat's up\b|\bhow are you\b|\bnice to meet\b|\btalk to you|\bchit chat\b|\bbye\b|\bsee you\b|\bthanks\b|\bthank you\b|\bexcuse me\b|\bsorry\b|\bplease\b|\bby the way\b|\bwell\b|\bactually\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex rxConferenceContent = new Regex(@"(\bpresent\b|\bconference\b|\bmeeting\b|\bstatement\b|\bannounce\b|\binvestor\b|\bstakeholder\b|\bcolleagues\b|\banalyst\b|\breport\b|\bresearch\b|\bprofessor\b|\bagenda\b|\bminutes\b|\bslide\b|\bchart\b|\bgraph\b|\bquarterly\b|\bstrategic\b|\bcommittee\b|\bboard\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex rxNewsContent = new Regex(@"(\breport\b|\bnews\b|\bheadline\b|\btoday\b|\bbreaking\b|\banalysis\b|\bstudy finds\b|\baccording to\b|\binvestigation\b|\bofficial\b|\bstatement\b|\bpress\b|\breported\b|\bannounced\b|\breleased\b|\bpublished\b|\bstated\b|\bconfirmed\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
+        
         // 其他有用的正则表达式
         private static readonly Regex rxNumbersMatch = new Regex(@"\d+", RegexOptions.Compiled);
         private static readonly Regex rxUrlPattern = new Regex(@"https?://[^\s]+", RegexOptions.Compiled);
@@ -257,13 +257,11 @@ namespace LiveCaptionsTranslator
             // 仅当使用LLM类API时才进行内容类型检测
             if (!IsLLMBasedAPI(Setting.ApiName))
                 return;
-                    
+                
             // 如果不是自动检测模式，则不进行内容类型检测
             if (Setting.PromptTemplate != PromptTemplate.AutoDetection)
                 return;
-                    
-            PromptTemplate detectedTemplate = PromptTemplate.General;
-            
+                
             // 创建检测计数器，用分数来决定最匹配的类型
             int technicalScore = 0;
             int conversationScore = 0;
@@ -358,6 +356,7 @@ namespace LiveCaptionsTranslator
             }
             
             // 根据最高分数确定内容类型
+            PromptTemplate detectedTemplate = PromptTemplate.General;
             int maxScore = Math.Max(Math.Max(technicalScore, conversationScore), 
                                     Math.Max(conferenceScore, mediaScore));
             
@@ -420,8 +419,8 @@ namespace LiveCaptionsTranslator
                                     // 更新上下文历史
                                     UpdateContextHistory(originalSnapshot);
 
-                                    // 确定使用哪个API - 智能选择或尝试建议的API
-                                    string apiToUse = DetermineApiToUse();
+                                    // 确定使用哪个API - 对单API环境，直接使用设置的API
+                                    string apiToUse = Translator.Setting.ApiName;
 
                                     translationTaskQueue.Enqueue(token => Task.Run(
                                         () => TranslateWithContext(originalSnapshot, apiToUse, token), token), originalSnapshot);
@@ -494,7 +493,7 @@ namespace LiveCaptionsTranslator
             }
         }
 
-        // 性能优化 - 更高效的上下文管理
+        // 优化上下文历史的管理
         private static void UpdateContextHistory(string sentence)
         {
             if (string.IsNullOrWhiteSpace(sentence))
@@ -510,8 +509,8 @@ namespace LiveCaptionsTranslator
             {
                 // 如果是段落结束，可以考虑清理部分历史
                 if (contextHistory.Count > 3 && 
-                (sentence.EndsWith(".") || sentence.EndsWith("。")) && 
-                sentence.Length > 20)
+                   (sentence.EndsWith(".") || sentence.EndsWith("。")) && 
+                   sentence.Length > 20)
                 {
                     // 使用Reset方法保留最近一句作为过渡
                     string latestSentence = contextHistory.GetItem(contextHistory.Count - 1);
@@ -521,91 +520,69 @@ namespace LiveCaptionsTranslator
             }
         }
 
-        // 确定当前应该使用哪个API
-        private static string DetermineApiToUse()
+        // 优化上下文相关性判断
+        private static bool ContextIsRelevant(string text)
         {
-            string currentApi = Translator.Setting.ApiName;
-            
-            // 有推荐API且质量评分高于当前API时，有20%概率尝试推荐的API
-            if (!string.IsNullOrEmpty(lastRecommendedApi) && 
-                lastRecommendedApi != currentApi && 
-                apiQualityScores.TryGetValue(lastRecommendedApi, out int recommendedScore) &&
-                (!apiQualityScores.TryGetValue(currentApi, out int currentScore) || recommendedScore > currentScore) &&
-                random.Next(100) < 20)
+            // 过短的文本一般不需要上下文
+            if (text.Length < 5)
+                return false;
+
+            // 检查文本中是否含有上下文相关的词汇（优化检测逻辑）
+            string[] words = text.Split(new char[] { ' ', ',', '.', '?', '!', '，', '。', '？', '！' }, 
+                StringSplitOptions.RemoveEmptyEntries);
+                
+            // 快速检查常见代词和连接词
+            foreach (string word in words)
             {
-                return lastRecommendedApi;
+                string lowerWord = word.ToLowerInvariant();
+                // 更全面的代词和连接词检测
+                if (contextKeywords.Contains(lowerWord))
+                {
+                    return true;
+                }
+                
+                // 检查更多指示性词汇
+                if (lowerWord == "then" || lowerWord == "therefore" ||
+                    lowerWord == "thus" || lowerWord == "hence" ||
+                    lowerWord == "consequently" || lowerWord == "so" ||
+                    lowerWord == "因此" || lowerWord == "所以" ||
+                    lowerWord == "那么" || lowerWord == "于是")
+                {
+                    return true;
+                }
             }
             
-            // 否则使用用户设置的API
-            return currentApi;
+            // 检查是否有代词起始的句子 (增加更多模式)
+            if (Regex.IsMatch(text, @"^\s*(This|That|These|Those|It|They|He|She|I|We|You|The|Such|Their|His|Her|Its|Those)\b", 
+                RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+            
+            // 检查中文指示代词
+            if (Regex.IsMatch(text, @"^\s*(这|那|它|他们|她们|我们|你们|其|该)\b"))
+            {
+                return true;
+            }
+            
+            // 检查句子是否似乎是前一句的延续（缺少主语）
+            if (Regex.IsMatch(text, @"^\s*(and|or|but|however|nevertheless|yet|still|moreover|furthermore|also)\b", 
+                RegexOptions.IgnoreCase))
+            {
+                return true; 
+            }
+            
+            // 如果句子非常短，也可能是上下文的一部分
+            if (text.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length < 4 && 
+                !Regex.IsMatch(text, @"\b(yes|no|ok|yeah|nope)\b", RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+            
+            return false;
         }
 
         // 性能优化 - 优化上下文构建逻辑
-        public static async Task<string> TranslateWithContext(string text, string apiName, CancellationToken token = default)
-        {
-            try
-            {
-                var sw = Setting.MainWindow.LatencyShow ? Stopwatch.StartNew() : null;
-                
-                string translatedText;
-                string sourceLanguage = "auto";
-                string targetLanguage = Setting.TargetLanguage;
-                
-                // 构建上下文文本 (仅对LLM类API)
-                if (IsLLMBasedAPI(apiName) && contextHistory.Count > 1)
-                {
-                    // 为LLM创建带上下文的提示词，使用缓存避免重复构建
-                    string contextPrompt = GetCachedContextPrompt(text, apiName);
-                    translatedText = await TranslateAPI.TranslateWithAPI(contextPrompt, apiName, token);
-                }
-                else
-                {
-                    // 对传统API使用普通翻译方法
-                    translatedText = await TranslateAPI.TranslateWithAPI(text, apiName, token);
-                }
-                
-                if (sw != null)
-                {
-                    sw.Stop();
-                    translatedText = $"[{sw.ElapsedMilliseconds} ms] " + translatedText;
-                }
-
-                // 评估翻译质量 - 使用轻量级评估模式减少CPU使用
-                int qualityScore = TranslationQualityEvaluator.EvaluateQualityLightweight(text, translatedText);
-                UpdateApiQualityScore(apiName, qualityScore);
-                
-                // 仅对低质量翻译尝试改进
-                if (qualityScore < 70)
-                {
-                    var (improvedTranslation, apiSuggestion) = TranslationQualityEvaluator.GetImprovedTranslation(
-                        translatedText, text, apiName, qualityScore);
-                    
-                    if (improvedTranslation != translatedText)
-                    {
-                        translatedText = improvedTranslation;
-                    }
-                    
-                    if (apiSuggestion != apiName)
-                    {
-                        // 记录API建议，但不立即切换，让用户或之后的翻译决定是否采用
-                        lastRecommendedApi = apiSuggestion;
-                    }
-                }
-                
-                return translatedText;
-            }
-            catch (OperationCanceledException)
-            {
-                return string.Empty;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Error] Translation failed: {ex.Message}");
-                return $"[Translation Failed] {ex.Message}";
-            }
-        }
-        
-        // 性能优化 - 缓存上下文提示词
         private static string GetCachedContextPrompt(string text, string apiName)
         {
             // 如果上下文版本与缓存版本相同，且缓存存在，直接使用缓存
@@ -678,67 +655,273 @@ namespace LiveCaptionsTranslator
                    currentText + 
                    cachedContext.Substring(endMarkerPos);
         }
-        
-        // 性能优化 - 智能判断是否需要为文本提供上下文
-        private static bool ContextIsRelevant(string text)
-        {
-            // 过短的文本一般不需要上下文
-            if (text.Length < 5)
-                return false;
 
-            // 检查文本中是否含有上下文相关的词汇（优化检测逻辑）
-            string[] words = text.Split(new char[] { ' ', ',', '.', '?', '!', '，', '。', '？', '！' }, 
-                StringSplitOptions.RemoveEmptyEntries);
-                
-            // 快速检查常见代词和连接词
-            foreach (string word in words)
+        // 为不同内容类型调整翻译参数
+        private static void AdjustTranslationParametersForContent(string text)
+        {
+            // 基于内容类型修改OpenAI配置
+            if (Setting.ApiName == "OpenAI" && Setting.Configs.ContainsKey("OpenAI") && Setting.UseContentAdaptiveMode)
             {
-                string lowerWord = word.ToLowerInvariant();
-                // 更全面的代词和连接词检测
-                if (contextKeywords.Contains(lowerWord))
+                var config = Setting.Configs["OpenAI"] as OpenAIConfig;
+                if (config != null)
                 {
-                    return true;
+                    // 默认值
+                    double defaultTemp = 0.7;
+                    
+                    // 根据内容类型调整参数
+                    if (rxTechnicalContent.IsMatch(text))
+                    {
+                        // 技术内容需要更精确的翻译，降低随机性
+                        config.Temperature = Math.Min(config.Temperature, 0.3);
+                    }
+                    else if (rxConversationalContent.IsMatch(text))
+                    {
+                        // 对话内容需要更自然的翻译，适度提高随机性
+                        config.Temperature = Math.Max(config.Temperature, 0.7);
+                    }
+                    else if (rxConferenceContent.IsMatch(text))
+                    {
+                        // 会议/演讲内容需要专业准确，中等随机性
+                        config.Temperature = Math.Min(config.Temperature, 0.5);
+                    }
+                    else if (rxNewsContent.IsMatch(text))
+                    {
+                        // 新闻内容需要客观准确，较低随机性
+                        config.Temperature = Math.Min(config.Temperature, 0.4);
+                    }
+                    else
+                    {
+                        // 对于其他内容，使用默认设置
+                        config.Temperature = defaultTemp;
+                    }
+                }
+            }
+        }
+
+        // 优化 TranslateWithContext 方法，适应单API环境
+        public static async Task<string> TranslateWithContext(string text, string apiName, CancellationToken token = default)
+        {
+            try
+            {
+                var sw = Setting.MainWindow.LatencyShow ? Stopwatch.StartNew() : null;
+                
+                string translatedText;
+                string sourceLanguage = "auto";
+                string targetLanguage = Setting.TargetLanguage;
+                
+                // 添加重试机制，提高可靠性
+                int retryCount = 0;
+                const int maxRetries = 2;
+                bool success = false;
+                
+                // 为当前内容类型动态调整翻译参数
+                AdjustTranslationParametersForContent(text);
+                
+                while (!success && retryCount <= maxRetries)
+                {
+                    try
+                    {
+                        // 根据内容类型使用不同的提示词和上下文处理策略
+                        if (IsLLMBasedAPI(apiName) && contextHistory.Count > 1)
+                        {
+                            // 为LLM创建带上下文的提示词，使用缓存避免重复构建
+                            string contextPrompt = GetCachedContextPrompt(text, apiName);
+                            translatedText = await TranslateAPI.TranslateWithAPI(contextPrompt, apiName, token);
+                        }
+                        else
+                        {
+                            translatedText = await TranslateAPI.TranslateWithAPI(text, apiName, token);
+                        }
+                        
+                        success = true; // 如果没有抛出异常，则认为成功
+                    }
+                    catch (Exception ex) when (!(ex is OperationCanceledException))
+                    {
+                        retryCount++;
+                        if (retryCount > maxRetries)
+                            throw; // 重试次数用完，重新抛出异常
+                        
+                        // 在重试前等待一段时间
+                        await Task.Delay(Math.Min(100 * retryCount, 500), token);
+                        
+                        // 如果API调用失败，尝试使用更简单的提示词
+                        if (retryCount == maxRetries)
+                        {
+                            // 最后一次尝试使用简化提示词模式
+                            Setting.UpdateCurrentPrompt(PromptTemplate.General);
+                        }
+                    }
                 }
                 
-                // 检查更多指示性词汇
-                if (lowerWord == "then" || lowerWord == "therefore" ||
-                    lowerWord == "thus" || lowerWord == "hence" ||
-                    lowerWord == "consequently" || lowerWord == "so" ||
-                    lowerWord == "因此" || lowerWord == "所以" ||
-                    lowerWord == "那么" || lowerWord == "于是")
+                if (sw != null)
                 {
-                    return true;
+                    sw.Stop();
+                    translatedText = $"[{sw.ElapsedMilliseconds} ms] " + translatedText;
+                }
+
+                // 基础清理 - 处理常见的输出问题
+                translatedText = PostProcessTranslation(translatedText, text);
+
+                // 评估翻译质量 - 使用轻量级评估模式减少CPU使用
+                int qualityScore = TranslationQualityEvaluator.EvaluateQualityLightweight(text, translatedText);
+                UpdateApiQualityScore(apiName, qualityScore);
+                
+                // 仅对低质量翻译尝试改进
+                if (qualityScore < 75)
+                {
+                    // 对于单API环境，我们只需尝试改进翻译结果本身
+                    translatedText = ImproveTranslationQuality(translatedText, text, qualityScore);
+                }
+                
+                return translatedText;
+            }
+            catch (OperationCanceledException)
+            {
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] Translation failed: {ex.Message}");
+                return $"[Translation Failed] {ex.Message}";
+            }
+        }
+
+        // 对翻译结果进行后处理
+        private static string PostProcessTranslation(string translatedText, string originalText)
+        {
+            if (string.IsNullOrEmpty(translatedText))
+                return translatedText;
+                
+            // 移除翻译API可能添加的前缀
+            translatedText = Regex.Replace(translatedText, @"^Translation: ", "", RegexOptions.IgnoreCase);
+            translatedText = Regex.Replace(translatedText, @"^Translated text: ", "", RegexOptions.IgnoreCase);
+            
+            // 移除可能的提示词标记
+            translatedText = translatedText.Replace("🔤", "");
+            
+            // 修复连续标点符号
+            translatedText = Regex.Replace(translatedText, @"([.!?。！？])\1+", "$1");
+            
+            // 处理引号不平衡的问题
+            int openDoubleQuotes = Regex.Matches(translatedText, "\"").Count;
+            if (openDoubleQuotes % 2 != 0)
+            {
+                // 引号不平衡，尝试修复
+                if (originalText.Contains("\""))
+                {
+                    // 如果原文有引号，根据原文情况修复
+                    int originalOpenQuotes = Regex.Matches(originalText, "\"").Count;
+                    if (originalOpenQuotes % 2 == 0)
+                        translatedText += "\""; // 添加闭合引号
+                }
+                else
+                {
+                    // 如果原文没有引号，直接移除翻译中的最后一个引号
+                    int lastQuotePos = translatedText.LastIndexOf("\"");
+                    if (lastQuotePos >= 0)
+                        translatedText = translatedText.Remove(lastQuotePos, 1);
                 }
             }
             
-            // 检查是否有代词起始的句子 (增加更多模式)
-            if (Regex.IsMatch(text, @"^\s*(This|That|These|Those|It|They|He|She|I|We|You|The|Such|Their|His|Her|Its|Those)\b", 
-                RegexOptions.IgnoreCase))
+            // 检查并修复中英文混排的空格问题
+            if (ContainsCJK(translatedText) && ContainsAlphaNumeric(translatedText))
             {
-                return true;
+                // 修复中文和英文之间的空格（根据中文排版规范）
+                translatedText = Regex.Replace(translatedText, @"([^\s\d\w])(\s+)([a-zA-Z0-9])", "$1$3");
+                translatedText = Regex.Replace(translatedText, @"([a-zA-Z0-9])(\s+)([^\s\d\w])", "$1$3");
             }
             
-            // 检查中文指示代词
-            if (Regex.IsMatch(text, @"^\s*(这|那|它|他们|她们|我们|你们|其|该)\b"))
+            return translatedText;
+        }
+
+        // 改进低质量翻译 - 针对单API环境
+        private static string ImproveTranslationQuality(string translatedText, string originalText, int qualityScore)
+        {
+            // 如果翻译质量不佳，尝试修复常见问题
+            if (string.IsNullOrEmpty(translatedText))
+                return translatedText;
+            
+            // 1. 检查数字/实体保留
+            if (rxNumbersMatch.Matches(originalText).Count > 0)
             {
-                return true;
+                var sourceNumbers = rxNumbersMatch.Matches(originalText).Cast<Match>().Select(m => m.Value).ToArray();
+                var translationNumbers = rxNumbersMatch.Matches(translatedText).Cast<Match>().Select(m => m.Value).ToArray();
+                
+                if (sourceNumbers.Length > 0 && translationNumbers.Length < sourceNumbers.Length)
+                {
+                    // 有数字丢失，尝试补充
+                    foreach (var number in sourceNumbers)
+                    {
+                        if (!translatedText.Contains(number))
+                        {
+                            // 简单补充策略 - 在句末添加
+                            translatedText = $"{translatedText} ({number})";
+                            break; // 只补充一个，避免过多干扰
+                        }
+                    }
+                }
             }
             
-            // 检查句子是否似乎是前一句的延续（缺少主语）
-            if (Regex.IsMatch(text, @"^\s*(and|or|but|however|nevertheless|yet|still|moreover|furthermore|also)\b", 
-                RegexOptions.IgnoreCase))
+            // 2. 检查URL保留
+            var urlPattern = new Regex(@"https?://[^\s]+", RegexOptions.Compiled);
+            var sourceUrls = urlPattern.Matches(originalText).Cast<Match>().Select(m => m.Value).ToArray();
+            var translationUrls = urlPattern.Matches(translatedText).Cast<Match>().Select(m => m.Value).ToArray();
+            
+            if (sourceUrls.Length > 0 && translationUrls.Length == 0)
             {
-                return true; 
+                // URL丢失，尝试添加
+                foreach (var url in sourceUrls)
+                {
+                    if (!translatedText.Contains(url))
+                    {
+                        translatedText += " " + url;
+                        break;
+                    }
+                }
             }
             
-            // 如果句子非常短，也可能是上下文的一部分
-            if (text.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length < 4 && 
-                !Regex.IsMatch(text, @"\b(yes|no|ok|yeah|nope)\b", RegexOptions.IgnoreCase))
+            // 3. 修复格式问题
+            // 修复问句和感叹句格式
+            if (originalText.EndsWith("?") && !translatedText.EndsWith("?") && !translatedText.EndsWith("？"))
+                translatedText += "?";
+            else if (originalText.EndsWith("!") && !translatedText.EndsWith("!") && !translatedText.EndsWith("！"))
+                translatedText += "!";
+            else if (originalText.EndsWith(".") && !translatedText.EndsWith(".") && !translatedText.EndsWith("。"))
+                translatedText += ".";
+            
+            // 4. 修复首字母大写保留
+            if (!ContainsCJK(translatedText) && 
+                originalText.Length > 0 && char.IsUpper(originalText[0]) && 
+                translatedText.Length > 0 && char.IsLower(translatedText[0]))
             {
-                return true;
+                translatedText = char.ToUpper(translatedText[0]) + translatedText.Substring(1);
             }
             
-            return false;
+            // 5. 处理重复词问题
+            var duplicatePattern = new Regex(@"\b(\w+)\b(?:\s+\1\b)+", RegexOptions.IgnoreCase);
+            translatedText = duplicatePattern.Replace(translatedText, "$1");
+            
+            // 6. 修复异常重复字符
+            var repeatedCharsPattern = new Regex(@"(.)\1{3,}");
+            translatedText = repeatedCharsPattern.Replace(translatedText, m => new string(m.Value[0], 2));
+            
+            return translatedText;
+        }
+
+        // 辅助方法：检查文本是否包含CJK字符
+        private static bool ContainsCJK(string text)
+        {
+            return text.Any(c => 
+                (c >= 0x4E00 && c <= 0x9FFF) ||   // CJK统一汉字
+                (c >= 0x3040 && c <= 0x309F) ||   // 平假名
+                (c >= 0x30A0 && c <= 0x30FF) ||   // 片假名
+                (c >= 0xAC00 && c <= 0xD7A3));    // 韩文
+        }
+
+        // 辅助方法：检查文本是否包含字母数字
+        private static bool ContainsAlphaNumeric(string text)
+        {
+            return text.Any(c => char.IsLetterOrDigit(c) && c <= 0x7F); // ASCII范围内的字母数字
         }
 
         // 判断是否为基于LLM的API

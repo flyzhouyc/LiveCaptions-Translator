@@ -34,6 +34,12 @@ namespace LiveCaptionsTranslator.models
         private PromptTemplate promptTemplate = PromptTemplate.General;
         private Dictionary<PromptTemplate, string> promptTemplates;
 
+        // 新增：每种内容类型的温度设置
+        private Dictionary<PromptTemplate, double> templateTemperatures;
+        
+        // 新增：是否使用内容自适应模式
+        private bool useContentAdaptiveMode;
+
         private MainWindowState mainWindowState;
         private OverlayWindowState overlayWindowState;
 
@@ -109,6 +115,27 @@ namespace LiveCaptionsTranslator.models
                 OnPropertyChanged("PromptTemplates");
             }
         }
+        
+        [JsonInclude]
+        public Dictionary<PromptTemplate, double> TemplateTemperatures
+        {
+            get => templateTemperatures;
+            set
+            {
+                templateTemperatures = value;
+                OnPropertyChanged("TemplateTemperatures");
+            }
+        }
+        
+        public bool UseContentAdaptiveMode
+        {
+            get => useContentAdaptiveMode;
+            set
+            {
+                useContentAdaptiveMode = value;
+                OnPropertyChanged("UseContentAdaptiveMode");
+            }
+        }
 
         public Dictionary<string, string> WindowBounds
         {
@@ -154,14 +181,6 @@ namespace LiveCaptionsTranslator.models
         {
             get => currentAPIConfig ?? (Configs.ContainsKey(ApiName) ? Configs[ApiName] : Configs["Ollama"]);
             set => currentAPIConfig = value;
-        }
-        public void UpdateCurrentPrompt(PromptTemplate detectedTemplate)
-        {
-            if (promptTemplates.ContainsKey(detectedTemplate))
-            {
-                prompt = promptTemplates[detectedTemplate];
-                OnPropertyChanged("Prompt");
-            }
         }
 
         public Setting()
@@ -237,8 +256,22 @@ namespace LiveCaptionsTranslator.models
                     "REMOVE all 🔤 when you output." }
             };
             
-            // 默认使用通用提示词
+            // 使用通用提示词
             prompt = promptTemplates[PromptTemplate.General];
+            
+            // 为不同内容类型设置默认Temperature值
+            templateTemperatures = new Dictionary<PromptTemplate, double>
+            {
+                { PromptTemplate.AutoDetection, 0.7 },
+                { PromptTemplate.General, 0.7 },
+                { PromptTemplate.Technical, 0.3 },
+                { PromptTemplate.Conversation, 0.8 },
+                { PromptTemplate.Conference, 0.5 },
+                { PromptTemplate.Media, 0.4 }
+            };
+            
+            // 默认开启内容自适应模式
+            useContentAdaptiveMode = true;
             
             mainWindowState = new MainWindowState
             {
@@ -296,6 +329,74 @@ namespace LiveCaptionsTranslator.models
                     { PromptTemplate.Conference, prompt },
                     { PromptTemplate.Media, prompt }
                 };
+            }
+            
+            // 初始化模板温度设置
+            if (templateTemperatures == null)
+            {
+                templateTemperatures = new Dictionary<PromptTemplate, double>
+                {
+                    { PromptTemplate.AutoDetection, 0.7 },
+                    { PromptTemplate.General, 0.7 },
+                    { PromptTemplate.Technical, 0.3 },
+                    { PromptTemplate.Conversation, 0.8 },
+                    { PromptTemplate.Conference, 0.5 },
+                    { PromptTemplate.Media, 0.4 }
+                };
+            }
+            
+            // 默认开启内容自适应模式
+            useContentAdaptiveMode = true;
+        }
+        
+        // 根据当前内容类型获取温度设置
+        public double GetTemperatureForCurrentTemplate()
+        {
+            if (TemplateTemperatures.TryGetValue(PromptTemplate, out double temp))
+                return temp;
+            return 0.7; // 默认值
+        }
+        
+        // 更新当前内容类型的API参数
+        public void UpdateAPIParametersForCurrentTemplate()
+        {
+            if (!UseContentAdaptiveMode)
+                return;
+                
+            if (ApiName == "OpenAI" && Configs.ContainsKey("OpenAI"))
+            {
+                var config = Configs["OpenAI"] as OpenAIConfig;
+                if (config != null)
+                {
+                    config.Temperature = GetTemperatureForCurrentTemplate();
+                }
+            }
+            else if (ApiName == "Ollama" && Configs.ContainsKey("Ollama"))
+            {
+                var config = Configs["Ollama"] as OllamaConfig;
+                if (config != null)
+                {
+                    config.Temperature = GetTemperatureForCurrentTemplate();
+                }
+            }
+        }
+
+        public void UpdateCurrentPrompt(PromptTemplate detectedTemplate)
+        {
+            if (promptTemplates.ContainsKey(detectedTemplate))
+            {
+                prompt = promptTemplates[detectedTemplate];
+                OnPropertyChanged("Prompt");
+                
+                // 如果启用了内容自适应模式，同时更新API参数
+                if (UseContentAdaptiveMode)
+                {
+                    // 设置临时的当前模板以便获取正确的温度值
+                    var originalTemplate = PromptTemplate;
+                    PromptTemplate = detectedTemplate;
+                    UpdateAPIParametersForCurrentTemplate();
+                    PromptTemplate = originalTemplate; // 恢复原始设置
+                }
             }
         }
 
@@ -356,6 +457,23 @@ namespace LiveCaptionsTranslator.models
                             "REMOVE all 🔤 when you output." }
                     };
                 }
+                
+                // 如果没有模板温度设置，初始化
+                if (setting.templateTemperatures == null)
+                {
+                    setting.templateTemperatures = new Dictionary<PromptTemplate, double>
+                    {
+                        { PromptTemplate.AutoDetection, 0.7 },
+                        { PromptTemplate.General, 0.7 },
+                        { PromptTemplate.Technical, 0.3 },
+                        { PromptTemplate.Conversation, 0.8 },
+                        { PromptTemplate.Conference, 0.5 },
+                        { PromptTemplate.Media, 0.4 }
+                    };
+                }
+                
+                // 如果没有内容自适应模式设置，默认开启
+                setting.useContentAdaptiveMode = true;
             }
             else
             {
