@@ -29,12 +29,6 @@ namespace LiveCaptionsTranslator
         private PerformanceIndicator performanceIndicator;
         private bool isIndicatorVisible = false;
         
-        // 硬件渲染标志
-        private bool isHardwareAccelerationDisabled = false;
-        
-        // 推迟加载任务
-        private List<Task> deferredTasks = new List<Task>();
-        
         App()
         {
             // 注册进程退出处理
@@ -63,9 +57,6 @@ namespace LiveCaptionsTranslator
             // 初始化取消令牌源
             cancellationTokenSource = new CancellationTokenSource();
             
-            // 根据系统配置优化渲染
-            OptimizeRendering();
-            
             // 启动任务
             syncLoopTask = Task.Run(() => Translator.SyncLoop());
             translateLoopTask = Task.Run(() => Translator.TranslateLoop());
@@ -83,7 +74,7 @@ namespace LiveCaptionsTranslator
             try
             {
                 // 预加载常用资源
-                deferredTasks.Add(Task.Run(() => 
+                Task.Run(() => 
                 {
                     // 预热翻译API
                     try
@@ -94,67 +85,25 @@ namespace LiveCaptionsTranslator
                     {
                         // 忽略预热错误
                     }
-                }));
+                });
                 
                 // 初始化数据库连接
-                deferredTasks.Add(Task.Run(() => 
+                Task.Run(() => 
                 {
                     try
                     {
-                        SQLiteHistoryLogger.EnsureDatabaseInitialized();
+                        // 预热数据库连接
+                        SQLiteHistoryLogger.LoadLastSourceText().Wait();
                     }
                     catch
                     {
                         // 忽略数据库初始化错误
                     }
-                }));
+                });
             }
             catch
             {
                 // 忽略延迟初始化错误
-            }
-        }
-        
-        // 优化渲染方式
-        private void OptimizeRendering()
-        {
-            try
-            {
-                // 检测系统GPU能力
-                if (RenderCapability.Tier > 0)
-                {
-                    // 启用硬件加速
-                    RenderOptions.ProcessRenderMode = RenderMode.Default;
-                }
-                else
-                {
-                    // 系统GPU能力有限，使用软件渲染
-                    isHardwareAccelerationDisabled = true;
-                    RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
-                }
-                
-                // 设置更好的缓存模式
-                if (isHardwareAccelerationDisabled)
-                {
-                    // 软件渲染时使用最小缓存
-                    RenderOptions.SetCachingHint(this, CachingHint.Unspecified);
-                }
-                else
-                {
-                    // 硬件加速时缓存静态内容
-                    RenderOptions.SetCachingHint(this, CachingHint.Cache);
-                }
-                
-                // 配置透明窗口优化
-                if (!isHardwareAccelerationDisabled)
-                {
-                    // 启用位图缓存以提高透明窗口性能
-                    RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
-                }
-            }
-            catch
-            {
-                // 忽略渲染优化错误
             }
         }
         
@@ -277,12 +226,6 @@ namespace LiveCaptionsTranslator
                 {
                     // 更激进的优化
                     LiveCaptionsHandler.RequestOptimization(true);
-                    
-                    // 调整透明窗口和渲染选项
-                    if (!isHardwareAccelerationDisabled)
-                    {
-                        RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.LowQuality);
-                    }
                 }
                 else
                 {
@@ -312,12 +255,6 @@ namespace LiveCaptionsTranslator
                     
                     // 重置性能计数器
                     LiveCaptionsHandler.ResetPerformanceCounters();
-                    
-                    // 恢复渲染选项
-                    if (!isHardwareAccelerationDisabled)
-                    {
-                        RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
-                    }
                 }
             });
         }
@@ -465,59 +402,33 @@ namespace LiveCaptionsTranslator
                     NotificationItem notification = notificationQueue.Dequeue();
                 
                     // 查找主窗口
-                    await Dispatcher.InvokeAsync(() => 
+                    var mainWindow = Current.Windows.OfType<MainWindow>().FirstOrDefault();
+                    if (mainWindow != null && mainWindow.IsLoaded)
                     {
-                        try
+                        await Dispatcher.InvokeAsync(() => 
                         {
-                            var mainWindow = Current.Windows.OfType<MainWindow>().FirstOrDefault();
-                            if (mainWindow != null && mainWindow.IsLoaded)
+                            try
                             {
-                                // 创建并显示通知
-                                var snackbar = new Snackbar()
-                                {
-                                    Title = "LiveCaptions Translator",
-                                    Content = notification.Message,
-                                    Timeout = notification.Duration
-                                };
-                                
-                                // 根据类型设置样式
-                                switch (notification.Type)
-                                {
-                                    case NotificationType.Success:
-                                        snackbar.Appearance = Wpf.Ui.Common.ControlAppearance.Success;
-                                        break;
-                                    case NotificationType.Warning:
-                                        snackbar.Appearance = Wpf.Ui.Common.ControlAppearance.Caution;
-                                        break;
-                                    case NotificationType.Error:
-                                        snackbar.Appearance = Wpf.Ui.Common.ControlAppearance.Danger;
-                                        break;
-                                    default:
-                                        snackbar.Appearance = Wpf.Ui.Common.ControlAppearance.Secondary;
-                                        break;
-                                }
-                                
-                                // 显示通知
-                                if (mainWindow.SnackbarHost != null)
-                                {
-                                    snackbar.Show(mainWindow.SnackbarHost);
-                                }
-                                else
-                                {
-                                    snackbar.Show();
-                                }
+                                // 使用MessageBox替代Snackbar，因为项目可能没有适当的Snackbar控件
+                                MessageBox.Show(
+                                    mainWindow,
+                                    notification.Message,
+                                    "LiveCaptions Translator",
+                                    MessageBoxButton.OK,
+                                    notification.Type == NotificationType.Error ? MessageBoxImage.Error :
+                                    notification.Type == NotificationType.Warning ? MessageBoxImage.Warning :
+                                    notification.Type == NotificationType.Success ? MessageBoxImage.Information :
+                                    MessageBoxImage.Information);
                             }
-                        }
-                        catch
-                        {
-                            // 忽略通知显示错误
-                        }
-                    });
+                            catch
+                            {
+                                // 忽略通知显示错误
+                            }
+                        });
+                    }
                     
                     // 等待通知显示完成再显示下一个
-                    // 不同通知类型的间隔不同
-                    int delayMs = (int)notification.Duration.TotalMilliseconds + 300;
-                    await Task.Delay(delayMs);
+                    await Task.Delay(100); // 短暂延迟防止消息框堆叠
                 }
                 catch
                 {
@@ -583,23 +494,6 @@ namespace LiveCaptionsTranslator
                     catch
                     {
                         // 忽略关闭错误
-                    }
-                }
-                
-                // 清理延迟任务
-                foreach (var task in deferredTasks)
-                {
-                    try
-                    {
-                        if (!task.IsCompleted)
-                        {
-                            // 尝试取消任务
-                            // 这里假设任务支持取消
-                        }
-                    }
-                    catch
-                    {
-                        // 忽略任务清理错误
                     }
                 }
             }
