@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Windows;
-using System.Windows.Controls; // 添加此行
-using System.Windows.Media;    // 添加此行
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 using LiveCaptionsTranslator.utils;
@@ -617,10 +617,10 @@ namespace LiveCaptionsTranslator
     // 性能指示器窗口类
     public class PerformanceIndicator : Window
     {
-        private TextBlock cpuTextBlock;
-        private TextBlock memoryTextBlock;
-        private ProgressBar cpuProgressBar;
-        private ProgressBar memoryProgressBar;
+        private System.Windows.Controls.TextBlock cpuTextBlock;
+        private System.Windows.Controls.TextBlock memoryTextBlock;
+        private System.Windows.Controls.ProgressBar cpuProgressBar;
+        private System.Windows.Controls.ProgressBar memoryProgressBar;
         
         public PerformanceIndicator()
         {
@@ -641,7 +641,7 @@ namespace LiveCaptionsTranslator
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
             
             // CPU标签
-            var cpuLabel = new TextBlock
+            var cpuLabel = new System.Windows.Controls.TextBlock
             {
                 Text = "CPU使用率:",
                 Margin = new Thickness(5, 5, 5, 2),
@@ -650,7 +650,7 @@ namespace LiveCaptionsTranslator
             Grid.SetRow(cpuLabel, 0);
             
             // CPU进度条
-            cpuProgressBar = new ProgressBar
+            cpuProgressBar = new System.Windows.Controls.ProgressBar
             {
                 Minimum = 0,
                 Maximum = 100,
@@ -661,7 +661,7 @@ namespace LiveCaptionsTranslator
             Grid.SetRow(cpuProgressBar, 1);
             
             // CPU文本
-            cpuTextBlock = new TextBlock
+            cpuTextBlock = new System.Windows.Controls.TextBlock
             {
                 Text = "0%",
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -672,7 +672,7 @@ namespace LiveCaptionsTranslator
             Grid.SetRow(cpuTextBlock, 1);
             
             // 内存标签
-            var memoryLabel = new TextBlock
+            var memoryLabel = new System.Windows.Controls.TextBlock
             {
                 Text = "内存使用:",
                 Margin = new Thickness(5, 5, 5, 2),
@@ -681,7 +681,7 @@ namespace LiveCaptionsTranslator
             Grid.SetRow(memoryLabel, 2);
             
             // 内存进度条
-            memoryProgressBar = new ProgressBar
+            memoryProgressBar = new System.Windows.Controls.ProgressBar
             {
                 Minimum = 0,
                 Maximum = 100,
@@ -692,7 +692,7 @@ namespace LiveCaptionsTranslator
             Grid.SetRow(memoryProgressBar, 3);
             
             // 内存文本
-            memoryTextBlock = new TextBlock
+            memoryTextBlock = new System.Windows.Controls.TextBlock
             {
                 Text = "0 MB",
                 HorizontalAlignment = HorizontalAlignment.Right,
