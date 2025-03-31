@@ -12,6 +12,7 @@ using System.Windows.Automation;
 using System.Collections.Generic;
 using System.Linq;
 
+
 namespace LiveCaptionsTranslator.utils
 {
     public static class LiveCaptionsHandler
@@ -574,7 +575,7 @@ namespace LiveCaptionsTranslator.utils
                                 Condition liveCondition = new PropertyCondition(
                                     AutomationElement.NameProperty, 
                                     name, 
-                                    PropertyConditionFlags.Contains);
+                                    PropertyConditionFlags.None);
                                     
                                 window = AutomationElement.RootElement.FindFirst(
                                     TreeScope.Children, 
