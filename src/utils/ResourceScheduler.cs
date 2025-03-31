@@ -758,8 +758,8 @@ namespace LiveCaptionsTranslator.utils
                 {
                     try
                     {
-                        var result = await action(token);
-                        taskCompletionSource.TrySetResult(result);
+                        await action(token);
+                        //taskCompletionSource.TrySetResult(result);
                         return Task.CompletedTask;
                     }
                     catch (OperationCanceledException)

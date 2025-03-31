@@ -368,7 +368,7 @@ namespace LiveCaptionsTranslator.utils
         }
         
         // 初始化共享内存通信
-        private static void InitializeSharedMemory()
+        public static void InitializeSharedMemory()
         {
             if (_sharedMemoryInitialized)
                 return;
