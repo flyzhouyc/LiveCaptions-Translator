@@ -9,6 +9,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Automation;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace LiveCaptionsTranslator.utils
 {
@@ -411,11 +413,13 @@ namespace LiveCaptionsTranslator.utils
                     
                     // 启动心跳线程
                     _isHeartbeatRunning = true;
-                    _heartbeatThread.Start();
+                    if (!_heartbeatThread.IsAlive)
+                        _heartbeatThread.Start();
                     
                     // 启动字幕收集线程
                     _isCaptionCollectorRunning = true;
-                    _captionCollectorThread.Start();
+                    if (!_captionCollectorThread.IsAlive)
+                        _captionCollectorThread.Start();
                 }
             }
             catch (Exception ex)
@@ -487,6 +491,7 @@ namespace LiveCaptionsTranslator.utils
             set => window = value;
         }
 
+        // 增强的LaunchLiveCaptions方法
         public static AutomationElement LaunchLiveCaptions()
         {
             try
@@ -525,21 +530,115 @@ namespace LiveCaptionsTranslator.utils
                 }
                 
                 processId = process.Id;
+                Console.WriteLine($"LiveCaptions进程已启动，进程ID: {processId}");
                 
                 // 更健壮的窗口查找逻辑
                 AutomationElement? window = null;
                 DateTime startTime = DateTime.Now;
-                TimeSpan maxWaitTime = TimeSpan.FromSeconds(10);
+                TimeSpan maxWaitTime = TimeSpan.FromSeconds(15); // 增加等待时间
                 
-                while (window == null || window.Current.ClassName.CompareTo("LiveCaptionsDesktopWindow") != 0)
+                while (window == null)
                 {
                     // 有条件的等待，避免无限循环
                     if (DateTime.Now - startTime > maxWaitTime)
+                    {
+                        Console.WriteLine("等待LiveCaptions窗口超时，请确认Windows LiveCaptions功能是否正常");
                         throw new Exception("等待LiveCaptions窗口超时");
+                    }
                     
                     try
                     {
+                        // 首先尝试通过进程ID查找
                         window = FindWindowByPId(process.Id);
+                        
+                        if (window != null)
+                        {
+                            Console.WriteLine($"通过进程ID找到LiveCaptions窗口: {window.Current.ClassName}");
+                        }
+                        
+                        // 如果找不到，尝试通过窗口名称查找
+                        if (window == null)
+                        {
+                            Console.WriteLine("通过进程ID未找到窗口，尝试通过窗口名称查找...");
+                            
+                            // 尝试查找任何包含LiveCaptions相关名称的窗口
+                            List<string> possibleNames = new List<string> { 
+                                "Live Captions", 
+                                "实时字幕",
+                                "LiveCaptions",
+                                "Captions"
+                            };
+                            
+                            foreach (string name in possibleNames)
+                            {
+                                Condition liveCondition = new PropertyCondition(
+                                    AutomationElement.NameProperty, 
+                                    name, 
+                                    PropertyConditionFlags.Contains);
+                                    
+                                window = AutomationElement.RootElement.FindFirst(
+                                    TreeScope.Children, 
+                                    liveCondition);
+                                    
+                                if (window != null)
+                                {
+                                    Console.WriteLine($"通过名称'{name}'找到LiveCaptions窗口");
+                                    break;
+                                }
+                            }
+                            
+                            // 尝试查找所有顶级窗口，可能帮助诊断问题
+                            if (window == null)
+                            {
+                                Console.WriteLine("尝试列出所有顶级窗口以帮助诊断问题:");
+                                
+                                var allWindows = AutomationElement.RootElement.FindAll(
+                                    TreeScope.Children, 
+                                    Condition.TrueCondition);
+                                
+                                foreach (AutomationElement win in allWindows)
+                                {
+                                    try
+                                    {
+                                        Console.WriteLine($"窗口: 名称='{win.Current.Name}', 类名='{win.Current.ClassName}'");
+                                    }
+                                    catch
+                                    {
+                                        // 忽略访问错误
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 如果找不到窗口，尝试通过类名查找
+                        if (window == null)
+                        {
+                            Console.WriteLine("通过名称未找到窗口，尝试通过类名查找...");
+                            
+                            List<string> possibleClassNames = new List<string> { 
+                                "LiveCaptionsDesktopWindow", 
+                                "LiveCaptionsWindow",
+                                "Windows.UI.Core.CoreWindow"
+                            };
+                            
+                            foreach (string className in possibleClassNames)
+                            {
+                                Condition classCondition = new PropertyCondition(
+                                    AutomationElement.ClassNameProperty, 
+                                    className);
+                                    
+                                window = AutomationElement.RootElement.FindFirst(
+                                    TreeScope.Children, 
+                                    classCondition);
+                                    
+                                if (window != null)
+                                {
+                                    Console.WriteLine($"通过类名'{className}'找到LiveCaptions窗口");
+                                    break;
+                                }
+                            }
+                        }
+                        
                         if (window != null)
                         {
                             // 初始化窗口句柄缓存
@@ -547,15 +646,24 @@ namespace LiveCaptionsTranslator.utils
                             
                             // 注册窗口事件监听
                             RegisterWindowEventHandlers(window);
+                            
+                            // 记录窗口信息以便调试
+                            Console.WriteLine($"找到LiveCaptions窗口: Name={window.Current.Name}, " +
+                                            $"ClassName={window.Current.ClassName}");
+                            
+                            // 立即调试UI结构
+                            Task.Run(() => DebugLiveCaptionsUIStructure());
+                            
+                            break;
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // 忽略查找过程中的异常，继续尝试
+                        Console.WriteLine($"查找LiveCaptions窗口时出错: {ex.Message}");
                     }
                     
                     // 更友好的等待方式
-                    Thread.Sleep(100);
+                    Thread.Sleep(500);
                 }
                 
                 // 初始化内存监控
@@ -869,6 +977,161 @@ namespace LiveCaptionsTranslator.utils
             }
         }
         
+        // 增强型UI自动化元素查找方法
+        public static AutomationElement? FindElementByMultipleProperties(
+            AutomationElement window, string automationId, CancellationToken token = default)
+        {
+            try
+            {
+                Console.WriteLine($"尝试通过多种属性查找元素: {automationId}");
+                
+                // 方法1：通过AutomationId查找
+                PropertyCondition idCondition = new PropertyCondition(
+                    AutomationElement.AutomationIdProperty, automationId);
+                var result = window.FindFirst(TreeScope.Descendants, idCondition);
+                if (result != null)
+                {
+                    Console.WriteLine($"通过AutomationId '{automationId}' 找到元素");
+                    return result;
+                }
+                
+                // 方法2：通过ControlType和Name模式查找文本区域元素
+                PropertyCondition textCondition = new PropertyCondition(
+                    AutomationElement.ControlTypeProperty, ControlType.Text);
+                // 查找所有文本控件
+                var textElements = window.FindAll(TreeScope.Descendants, textCondition);
+                
+                Console.WriteLine($"找到 {textElements.Count} 个文本元素，尝试识别字幕元素");
+                
+                foreach (AutomationElement element in textElements)
+                {
+                    try {
+                        // 记录找到的文本元素信息
+                        Console.WriteLine($"文本元素: Name='{element.Current.Name}', " +
+                                     $"AutomationId='{element.Current.AutomationId}', " +
+                                     $"ClassName='{element.Current.ClassName}'");
+                                     
+                        // 寻找可能包含字幕内容的文本控件
+                        // LiveCaptions的文本框通常有内容且位于窗口中部
+                        if (!string.IsNullOrEmpty(element.Current.Name))
+                        {
+                            // 这可能是包含字幕的元素，特别是如果它有文本内容
+                            Console.WriteLine($"找到可能的字幕元素: '{element.Current.Name}'");
+                            return element;
+                        }
+                    } catch {
+                        continue;
+                    }
+                }
+                
+                // 方法3：尝试通过UI结构查找
+                Console.WriteLine("尝试通过UI结构查找文本元素");
+                // 从窗口开始向下遍历，查找可能的容器和文本元素
+                var contentElement = FindFirstChild(window);
+                if (contentElement != null)
+                {
+                    Console.WriteLine("找到窗口第一个子元素，开始查找文本元素");
+                    var candidate = FindTextElementInChildren(contentElement);
+                    if (candidate != null)
+                    {
+                        Console.WriteLine($"通过递归查找找到可能的字幕元素: '{candidate.Current.Name}'");
+                        return candidate;
+                    }
+                }
+                
+                Console.WriteLine("无法找到任何可能的字幕元素");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"查找UI元素时发生错误: {ex.Message}");
+                return null;
+            }
+        }
+
+        // 查找第一个子元素
+        private static AutomationElement FindFirstChild(AutomationElement parent)
+        {
+            try {
+                return TreeWalker.RawViewWalker.GetFirstChild(parent);
+            } catch {
+                return null;
+            }
+        }
+
+        // 在子元素中递归查找文本元素
+        private static AutomationElement FindTextElementInChildren(AutomationElement element)
+        {
+            try {
+                // 如果当前元素是文本元素并且有内容，返回它
+                if (element.Current.ControlType == ControlType.Text && 
+                    !string.IsNullOrEmpty(element.Current.Name))
+                    return element;
+                    
+                // 搜索所有子元素
+                AutomationElement child = TreeWalker.RawViewWalker.GetFirstChild(element);
+                while (child != null)
+                {
+                    var result = FindTextElementInChildren(child);
+                    if (result != null)
+                        return result;
+                        
+                    child = TreeWalker.RawViewWalker.GetNextSibling(child);
+                }
+            } catch {
+                // 忽略错误，继续查找
+            }
+            return null;
+        }
+        
+        // 调试LiveCaptions的UI结构
+        public static void DebugLiveCaptionsUIStructure()
+        {
+            try
+            {
+                if (window == null)
+                {
+                    Console.WriteLine("LiveCaptions窗口未初始化");
+                    return;
+                }
+                
+                Console.WriteLine("开始分析LiveCaptions窗口结构...");
+                Console.WriteLine($"窗口类名: {window.Current.ClassName}");
+                Console.WriteLine($"窗口名称: {window.Current.Name}");
+                
+                // 记录所有后代元素的信息
+                DumpElementTree(window, 0);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"分析LiveCaptions UI结构时出错: {ex.Message}");
+            }
+        }
+
+        private static void DumpElementTree(AutomationElement element, int depth)
+        {
+            try
+            {
+                string indent = new string(' ', depth * 2);
+                Console.WriteLine($"{indent}元素: {element.Current.ControlType.ProgrammaticName}");
+                Console.WriteLine($"{indent}  Name: {element.Current.Name}");
+                Console.WriteLine($"{indent}  AutomationId: {element.Current.AutomationId}");
+                Console.WriteLine($"{indent}  ClassName: {element.Current.ClassName}");
+                
+                // 递归处理所有子元素
+                AutomationElement child = TreeWalker.RawViewWalker.GetFirstChild(element);
+                while (child != null)
+                {
+                    DumpElementTree(child, depth + 1);
+                    child = TreeWalker.RawViewWalker.GetNextSibling(child);
+                }
+            }
+            catch
+            {
+                // 忽略元素访问错误
+            }
+        }
+        
         // 优化：从共享内存中获取字幕
         private static string GetCaptionsFromSharedMemory()
         {
@@ -934,12 +1197,12 @@ namespace LiveCaptionsTranslator.utils
             }
         }
         
-        // 优化：使用UI自动化获取字幕
+        // 增强型：使用UI自动化获取字幕
         private static string GetCaptionsFromUIAutomation()
         {
             try
             {
-                // 检查系统负载状态，调整采样间隔
+                // 检测系统负载状态，调整采样间隔
                 AdjustSampleIntervalBasedOnSystemLoad();
                 
                 // 周期性检查LiveCaptions内存使用
@@ -947,13 +1210,30 @@ namespace LiveCaptionsTranslator.utils
                 
                 performanceMonitor.Restart();
                 
-                // 优化：缓存字幕文本元素以减少UI自动化操作的开销
+                // 优化：尝试用多种方式查找字幕文本元素
                 if (captionsTextBlock == null)
                 {
+                    // 首先尝试缓存查找
                     captionsTextBlock = FindCachedElementByAId(window, "CaptionsTextBlock");
+                    
+                    // 如果找不到，使用增强的查找方法
                     if (captionsTextBlock == null)
                     {
-                        return string.Empty;
+                        Console.WriteLine("缓存中找不到字幕元素，尝试多属性查找方法");
+                        captionsTextBlock = FindElementByMultipleProperties(window, "CaptionsTextBlock");
+                        
+                        // 如果仍然找不到，记录UI结构以便调试
+                        if (captionsTextBlock == null)
+                        {
+                            Console.WriteLine("无法找到字幕文本元素，正在记录UI结构以便调试...");
+                            DebugLiveCaptionsUIStructure();
+                            return string.Empty;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"找到字幕元素: Name='{captionsTextBlock.Current.Name}', " +
+                                         $"AutomationId='{captionsTextBlock.Current.AutomationId}'");
+                        }
                     }
                 }
                 
@@ -1018,6 +1298,11 @@ namespace LiveCaptionsTranslator.utils
                             // 尝试通知应用主线程
                             NotifyPerformanceStateChanged(PerformanceState.Normal);
                         }
+                    }
+                    
+                    if (!string.IsNullOrEmpty(captionText))
+                    {
+                        Console.WriteLine($"成功获取字幕: '{captionText.Substring(0, Math.Min(30, captionText.Length))}'...");
                     }
                     
                     return captionText;
@@ -1135,6 +1420,7 @@ namespace LiveCaptionsTranslator.utils
                 // 首先尝试从队列获取最新字幕
                 if (_captionQueue.TryDequeue(out string latestCaption))
                 {
+                    Console.WriteLine($"从队列获取字幕: '{latestCaption.Substring(0, Math.Min(30, latestCaption.Length))}'...");
                     return latestCaption;
                 }
                 
@@ -1206,6 +1492,9 @@ namespace LiveCaptionsTranslator.utils
                 // 检测内存增长率
                 long memoryGrowth = currentMemory - lastMemoryUsage;
                 lastMemoryUsage = currentMemory;
+                
+                Console.WriteLine($"LiveCaptions内存使用: {currentMemory / (1024 * 1024)}MB, " +
+                             $"增长: {memoryGrowth / (1024 * 1024)}MB");
                 
                 // 如果内存使用超过200MB或快速增长，尝试回收内存
                 if (currentMemory > 200 * 1024 * 1024 || memoryGrowth > 50 * 1024 * 1024)
@@ -1294,6 +1583,12 @@ namespace LiveCaptionsTranslator.utils
                 
                 // 重新查找字幕元素
                 captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
+                
+                // 如果无法通过传统方法找到，尝试多属性查找
+                if (captionsTextBlock == null)
+                {
+                    captionsTextBlock = FindElementByMultipleProperties(window, "CaptionsTextBlock");
+                }
             }
             catch
             {
@@ -1325,6 +1620,12 @@ namespace LiveCaptionsTranslator.utils
                 
                 // 重新查找字幕元素
                 captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
+                
+                // 如果无法通过传统方法找到，尝试多属性查找
+                if (captionsTextBlock == null)
+                {
+                    captionsTextBlock = FindElementByMultipleProperties(window, "CaptionsTextBlock");
+                }
                 
                 // 通知应用LiveCaptions已尝试恢复
                 NotifyLiveCaptionsRecoveryAttempt(autoRecoveryAttempts);
@@ -1458,6 +1759,8 @@ namespace LiveCaptionsTranslator.utils
                 if (processes.Length == 0)
                     return;
                     
+                Console.WriteLine($"发现 {processes.Length} 个 {processName} 进程，尝试关闭...");
+                    
                 foreach (Process process in processes)
                 {
                     try
@@ -1475,6 +1778,7 @@ namespace LiveCaptionsTranslator.utils
                             }
                             
                             process.WaitForExit();
+                            Console.WriteLine($"已关闭进程 ID: {process.Id}");
                         }
                     }
                     catch
