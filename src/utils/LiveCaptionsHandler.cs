@@ -49,20 +49,51 @@ namespace LiveCaptionsTranslator.utils
         private static int _automationCacheMisses = 0;
         private static DateTime _lastCacheCleanup = DateTime.MinValue;
         
-        // 优化：共享内存通信
+        // 优化：增强型共享内存通信
+        private static readonly string SHARED_MEM_NAME = "LiveCaptionsTranslator_SharedMemory";
+        private static readonly string SHARED_EVENT_DATA_READY = "LiveCaptionsTranslator_DataReady";
+        private static readonly string SHARED_EVENT_DATA_PROCESSED = "LiveCaptionsTranslator_DataProcessed";
         private static MemoryMappedFile _sharedMemory;
         private static MemoryMappedViewAccessor _sharedMemoryView;
+        private static EventWaitHandle _dataReadyEvent;
+        private static EventWaitHandle _dataProcessedEvent;
         private static bool _useSharedMemory = false;
         private static bool _sharedMemoryInitialized = false;
         private static readonly object _sharedMemoryLock = new object();
-        private static readonly byte[] _memoryBuffer = new byte[4096]; // 预分配缓冲区
+        private static readonly byte[] _memoryBuffer = new byte[8192]; // 增加缓冲区大小
         private static long _lastCaptionHash = 0; // 上次字幕内容的哈希值
+        private static readonly Thread _heartbeatThread;
+        private static volatile bool _isHeartbeatRunning = false;
+        private static DateTime _lastHeartbeatTime = DateTime.MinValue;
+        private static int _heartbeatMissCount = 0;
+        private static readonly int MAX_HEARTBEAT_MISS = 3;
+        
+        // 通信协议版本
+        private const int PROTOCOL_VERSION = 2;
+        
+        // 共享内存布局
+        // 0-3: 状态标志 (0=未初始化, 1=初始化完成, 2=数据就绪, 3=心跳)
+        // 4-7: 数据长度
+        // 8-11: 协议版本
+        // 12-19: 时间戳
+        // 20-27: 窗口句柄
+        // 28-31: 检查和
+        // 32-8191: 数据区域
         
         // 缓存控制和性能相关参数
         private static readonly TimeSpan _cacheCleanupInterval = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan _lowLoadReassessmentInterval = TimeSpan.FromMinutes(5);
         private static DateTime _lastLowLoadReassessment = DateTime.MinValue;
-
+        
+        // 启动单独的字幕收集线程
+        private static Thread _captionCollectorThread;
+        private static volatile bool _isCaptionCollectorRunning = false;
+        private static readonly ConcurrentQueue<string> _captionQueue = new ConcurrentQueue<string>();
+        private static readonly AutoResetEvent _captionProcessEvent = new AutoResetEvent(false);
+        private static readonly int MAX_QUEUE_SIZE = 20;
+        private static string _lastCaptionText = string.Empty;
+        private static readonly TimeSpan _maxCaptionAge = TimeSpan.FromSeconds(2); // 字幕最大有效期
+        
         // 性能状态枚举
         public enum PerformanceState
         {
@@ -83,14 +114,257 @@ namespace LiveCaptionsTranslator.utils
         // LiveCaptions重启请求事件
         public static event Action? LiveCaptionsRestartRequested;
         
+        // 字幕更新事件
+        public static event Action<string>? CaptionUpdated;
+        
         // 静态构造函数 - 初始化共享内存和性能监控
         static LiveCaptionsHandler()
         {
+            // 初始化心跳线程
+            _heartbeatThread = new Thread(HeartbeatLoop)
+            {
+                IsBackground = true,
+                Name = "LiveCaptions_Heartbeat",
+                Priority = ThreadPriority.BelowNormal
+            };
+            
+            // 初始化字幕收集线程
+            _captionCollectorThread = new Thread(CaptionCollectorLoop)
+            {
+                IsBackground = true,
+                Name = "LiveCaptions_CaptionCollector",
+                Priority = ThreadPriority.AboveNormal
+            };
+            
             // 尝试初始化共享内存通信
             InitializeSharedMemory();
             
             // 启动性能监控
             performanceMonitor.Start();
+        }
+        
+        // 优化：心跳机制确保共享内存连接稳定
+        private static void HeartbeatLoop()
+        {
+            try
+            {
+                while (_isHeartbeatRunning)
+                {
+                    try
+                    {
+                        if (!_sharedMemoryInitialized)
+                        {
+                            Thread.Sleep(1000);
+                            continue;
+                        }
+                        
+                        // 发送心跳
+                        lock (_sharedMemoryLock)
+                        {
+                            // 写入心跳数据
+                            _sharedMemoryView.Write(0, 3); // 状态 = 心跳
+                            _sharedMemoryView.Write(12, DateTime.UtcNow.Ticks); // 时间戳
+                        }
+                        
+                        // 尝试触发事件，通知LiveCaptions进程
+                        try
+                        {
+                            _dataReadyEvent?.Set();
+                        }
+                        catch
+                        {
+                            // 忽略事件触发错误
+                        }
+                        
+                        // 等待心跳响应
+                        bool response = false;
+                        try
+                        {
+                            response = _dataProcessedEvent?.WaitOne(500) ?? false;
+                        }
+                        catch
+                        {
+                            response = false;
+                        }
+                        
+                        if (!response)
+                        {
+                            _heartbeatMissCount++;
+                            if (_heartbeatMissCount > MAX_HEARTBEAT_MISS)
+                            {
+                                // 心跳丢失过多，重新初始化共享内存
+                                Console.WriteLine("心跳响应超时，重新初始化共享内存");
+                                ResetSharedMemory();
+                                _heartbeatMissCount = 0;
+                            }
+                        }
+                        else
+                        {
+                            // 成功收到心跳响应
+                            _heartbeatMissCount = 0;
+                            _lastHeartbeatTime = DateTime.Now;
+                        }
+                        
+                        // 心跳间隔
+                        Thread.Sleep(2000);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"心跳线程异常: {ex.Message}");
+                        Thread.Sleep(5000); // 出错时等待较长时间
+                    }
+                }
+            }
+            catch (ThreadAbortException)
+            {
+                // 线程被终止，清理资源
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"心跳线程致命错误: {ex.Message}");
+            }
+        }
+        
+        // 优化：字幕收集线程，减少UI线程压力
+        private static void CaptionCollectorLoop()
+        {
+            try
+            {
+                while (_isCaptionCollectorRunning)
+                {
+                    try
+                    {
+                        if (window == null || !_isCaptionCollectorRunning)
+                        {
+                            Thread.Sleep(500);
+                            continue;
+                        }
+                        
+                        string captionText = string.Empty;
+                        bool captionReceived = false;
+                        
+                        // 首先尝试从共享内存获取
+                        if (_useSharedMemory && _sharedMemoryInitialized)
+                        {
+                            captionText = GetCaptionsFromSharedMemory();
+                            if (!string.IsNullOrEmpty(captionText))
+                            {
+                                captionReceived = true;
+                            }
+                        }
+                        
+                        // 如果共享内存失败，回退到UI自动化
+                        if (!captionReceived)
+                        {
+                            // 使用UI自动化获取字幕
+                            try
+                            {
+                                captionText = GetCaptionsFromUIAutomation();
+                                if (!string.IsNullOrEmpty(captionText))
+                                {
+                                    captionReceived = true;
+                                    
+                                    // 将获取到的字幕写入共享内存
+                                    if (_useSharedMemory && _sharedMemoryInitialized)
+                                    {
+                                        WriteToSharedMemory(captionText);
+                                    }
+                                }
+                            }
+                            catch (ElementNotAvailableException)
+                            {
+                                captionsTextBlock = null;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"UI自动化获取字幕失败: {ex.Message}");
+                            }
+                        }
+                        
+                        // 如果成功获取到字幕并且与上次不同，加入队列
+                        if (captionReceived && !string.IsNullOrEmpty(captionText) && captionText != _lastCaptionText)
+                        {
+                            // 更新最后获取的字幕
+                            _lastCaptionText = captionText;
+                            
+                            // 限制队列大小
+                            if (_captionQueue.Count >= MAX_QUEUE_SIZE)
+                            {
+                                string dummy;
+                                _captionQueue.TryDequeue(out dummy);
+                            }
+                            
+                            // 加入队列
+                            _captionQueue.Enqueue(captionText);
+                            
+                            // 触发处理事件
+                            _captionProcessEvent.Set();
+                            
+                            // 触发字幕更新事件
+                            CaptionUpdated?.Invoke(captionText);
+                        }
+                        
+                        // 根据当前系统负载和设置动态调整采样间隔
+                        int sleepTime = AdjustSampleIntervalDynamically();
+                        Thread.Sleep(sleepTime);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"字幕收集线程异常: {ex.Message}");
+                        Thread.Sleep(1000); // 出错时等待较长时间
+                    }
+                }
+            }
+            catch (ThreadAbortException)
+            {
+                // 线程被终止，清理资源
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"字幕收集线程致命错误: {ex.Message}");
+            }
+        }
+        
+        // 优化：动态调整采样间隔
+        private static int AdjustSampleIntervalDynamically()
+        {
+            // 基础间隔
+            int interval = currentSampleInterval;
+            
+            // 根据系统负载状态调整
+            if (isHighLoadMode)
+            {
+                interval = Math.Min(baseSampleInterval * 2, 100);
+            }
+            
+            if (isLowResourceMode)
+            {
+                interval = Math.Min(baseSampleInterval * 3, 150);
+            }
+            
+            // 根据队列长度进一步调整
+            if (_captionQueue.Count > 10)
+            {
+                interval += 50; // 队列较长时，延长间隔
+            }
+            else if (_captionQueue.Count < 2)
+            {
+                interval = Math.Max(interval - 5, baseSampleInterval); // 队列较短时，缩短间隔
+            }
+            
+            // 根据CPU使用率动态调整
+            float cpuUsage = PerformanceMonitor.CpuUsage;
+            if (cpuUsage > 70)
+            {
+                interval += 25; // CPU高负载时，显著增加间隔
+            }
+            else if (cpuUsage < 30 && interval > baseSampleInterval)
+            {
+                interval -= 10; // CPU低负载时，减少间隔
+            }
+            
+            // 确保间隔在合理范围内
+            return Math.Max(10, Math.Min(interval, 200));
         }
         
         // 初始化共享内存通信
@@ -108,26 +382,68 @@ namespace LiveCaptionsTranslator.utils
                         
                     // 创建或打开共享内存
                     _sharedMemory = MemoryMappedFile.CreateOrOpen(
-                        "LiveCaptionsTranslator_SharedMemory", 
-                        4096, // 4KB 应该足够存储字幕
+                        SHARED_MEM_NAME, 
+                        8192, // 8KB 共享内存空间
                         MemoryMappedFileAccess.ReadWrite);
                         
                     // 获取视图访问器
                     _sharedMemoryView = _sharedMemory.CreateViewAccessor(
-                        0, 4096, MemoryMappedFileAccess.ReadWrite);
+                        0, 8192, MemoryMappedFileAccess.ReadWrite);
+                        
+                    // 创建或打开事件信号
+                    bool createdNew;
+                    _dataReadyEvent = new EventWaitHandle(false, EventResetMode.AutoReset, 
+                        SHARED_EVENT_DATA_READY, out createdNew);
+                        
+                    _dataProcessedEvent = new EventWaitHandle(false, EventResetMode.AutoReset,
+                        SHARED_EVENT_DATA_PROCESSED, out createdNew);
                         
                     // 初始化共享内存
-                    _sharedMemoryView.Write(0, 0); // 写入长度为0
+                    _sharedMemoryView.Write(0, 0); // 状态 = 未初始化
+                    _sharedMemoryView.Write(4, 0); // 数据长度 = 0
+                    _sharedMemoryView.Write(8, PROTOCOL_VERSION); // 协议版本
+                    _sharedMemoryView.Write(12, DateTime.UtcNow.Ticks); // 时间戳
                     
                     _sharedMemoryInitialized = true;
                     _useSharedMemory = true;
                     
                     Console.WriteLine("共享内存通信已初始化");
+                    
+                    // 启动心跳线程
+                    _isHeartbeatRunning = true;
+                    _heartbeatThread.Start();
+                    
+                    // 启动字幕收集线程
+                    _isCaptionCollectorRunning = true;
+                    _captionCollectorThread.Start();
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"初始化共享内存失败: {ex.Message}");
+                _useSharedMemory = false;
+                _sharedMemoryInitialized = false;
+            }
+        }
+        
+        // 重置共享内存
+        private static void ResetSharedMemory()
+        {
+            try
+            {
+                lock (_sharedMemoryLock)
+                {
+                    // 清理资源
+                    CleanupSharedMemory();
+                    
+                    // 重新初始化
+                    Thread.Sleep(100); // 等待资源释放
+                    InitializeSharedMemory();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"重置共享内存失败: {ex.Message}");
                 _useSharedMemory = false;
                 _sharedMemoryInitialized = false;
             }
@@ -146,6 +462,8 @@ namespace LiveCaptionsTranslator.utils
                     
                 try
                 {
+                    _dataReadyEvent?.Dispose();
+                    _dataProcessedEvent?.Dispose();
                     _sharedMemoryView?.Dispose();
                     _sharedMemory?.Dispose();
                 }
@@ -159,6 +477,14 @@ namespace LiveCaptionsTranslator.utils
                     _useSharedMemory = false;
                 }
             }
+        }
+
+        private static AutomationElement? window = null;
+
+        public static AutomationElement? Window
+        {
+            get => window;
+            set => window = value;
         }
 
         public static AutomationElement LaunchLiveCaptions()
@@ -247,7 +573,7 @@ namespace LiveCaptionsTranslator.utils
                     }
                 }
                 
-                // 初始化共享内存写入
+                // 增强共享内存连接
                 if (_useSharedMemory && window != null)
                 {
                     // 尝试将LiveCaptions连接到共享内存
@@ -263,7 +589,7 @@ namespace LiveCaptionsTranslator.utils
             }
         }
         
-        // 新增：将LiveCaptions连接到共享内存
+        // 增强型：将LiveCaptions连接到共享内存
         private static void ConnectLiveCaptionsToSharedMemory(AutomationElement window)
         {
             try
@@ -271,18 +597,25 @@ namespace LiveCaptionsTranslator.utils
                 // 已初始化共享内存
                 if (_sharedMemoryInitialized)
                 {
-                    // 将窗口句柄写入共享内存以便LiveCaptions进程识别
-                    if (windowHandle.HasValue)
+                    lock (_sharedMemoryLock)
                     {
-                        _sharedMemoryView.Write(4, windowHandle.Value.ToInt64());
+                        // 将窗口句柄写入共享内存以便LiveCaptions进程识别
+                        if (windowHandle.HasValue)
+                        {
+                            _sharedMemoryView.Write(20, windowHandle.Value.ToInt64());
+                        }
+                        
+                        // 写入初始化状态
+                        _sharedMemoryView.Write(0, 1); // 1表示初始化完成
+                        _sharedMemoryView.Write(12, DateTime.UtcNow.Ticks); // 时间戳
+                        
+                        // 计算校验和
+                        int checksum = ComputeChecksum(_memoryBuffer, 0);
+                        _sharedMemoryView.Write(28, checksum);
+                        
+                        // 触发事件通知LiveCaptions
+                        _dataReadyEvent?.Set();
                     }
-                    
-                    // 写入一个标识消息
-                    byte[] message = Encoding.UTF8.GetBytes("INIT");
-                    _sharedMemoryView.WriteArray(8, message, 0, message.Length);
-                    
-                    // 设置状态标志
-                    _sharedMemoryView.Write(0, 1); // 1表示初始化完成
                 }
             }
             catch (Exception ex)
@@ -290,6 +623,17 @@ namespace LiveCaptionsTranslator.utils
                 Console.WriteLine($"连接LiveCaptions到共享内存失败: {ex.Message}");
                 _useSharedMemory = false;
             }
+        }
+        
+        // 计算校验和
+        private static int ComputeChecksum(byte[] buffer, int length)
+        {
+            int sum = 0;
+            for (int i = 0; i < Math.Min(length, 32); i++)
+            {
+                sum += buffer[i];
+            }
+            return sum;
         }
         
         // 注册窗口事件处理程序
@@ -305,8 +649,6 @@ namespace LiveCaptionsTranslator.utils
                     window,
                     TreeScope.Element,
                     windowClosedHandler);
-                    
-                // TODO: 根据需要注册更多事件处理
             }
             catch (Exception ex)
             {
@@ -336,6 +678,10 @@ namespace LiveCaptionsTranslator.utils
         {
             try
             {
+                // 停止收集线程
+                _isCaptionCollectorRunning = false;
+                _isHeartbeatRunning = false;
+                
                 // 获取窗口句柄和进程ID
                 nint hWnd;
                 
@@ -417,6 +763,13 @@ namespace LiveCaptionsTranslator.utils
             currentSampleInterval = baseSampleInterval;
             _automationElementCache.Clear();
             _automationCacheMisses = 0;
+            
+            // 清空字幕队列
+            while (_captionQueue.TryDequeue(out _)) { }
+            
+            // 停止线程
+            _isCaptionCollectorRunning = false;
+            _isHeartbeatRunning = false;
         }
 
         public static void HideLiveCaptions(AutomationElement window)
@@ -515,9 +868,74 @@ namespace LiveCaptionsTranslator.utils
                 throw;
             }
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static string GetCaptions(AutomationElement window)
+        
+        // 优化：从共享内存中获取字幕
+        private static string GetCaptionsFromSharedMemory()
+        {
+            if (!_sharedMemoryInitialized)
+                return string.Empty;
+                
+            try
+            {
+                lock (_sharedMemoryLock)
+                {
+                    // 读取状态标志
+                    int status = _sharedMemoryView.ReadInt32(0);
+                    if (status != 2) // 2表示有新的字幕数据
+                        return string.Empty;
+                        
+                    // 读取字幕长度
+                    int length = _sharedMemoryView.ReadInt32(4);
+                    if (length <= 0 || length > 8000) // 合理的最大长度
+                        return string.Empty;
+                    
+                    // 验证协议版本
+                    int protocol = _sharedMemoryView.ReadInt32(8);
+                    if (protocol != PROTOCOL_VERSION)
+                        return string.Empty;
+                        
+                    // 验证时间戳，确保数据不是过时的
+                    long timestamp = _sharedMemoryView.ReadInt64(12);
+                    DateTime dataTime = new DateTime(timestamp, DateTimeKind.Utc);
+                    if (DateTime.UtcNow - dataTime > _maxCaptionAge)
+                        return string.Empty;
+                        
+                    // 读取校验和
+                    int expectedChecksum = _sharedMemoryView.ReadInt32(28);
+                        
+                    // 读取字幕内容
+                    _sharedMemoryView.ReadArray(32, _memoryBuffer, 0, length);
+                    
+                    // 验证校验和
+                    int actualChecksum = ComputeChecksum(_memoryBuffer, length);
+                    if (actualChecksum != expectedChecksum)
+                        return string.Empty;
+                        
+                    // 计算内容哈希值并比较是否有变化
+                    long hash = ComputeHash(_memoryBuffer, length);
+                    if (hash == _lastCaptionHash)
+                        return string.Empty; // 相同内容，没有变化
+                        
+                    _lastCaptionHash = hash;
+                    
+                    // 通知LiveCaptions数据已处理
+                    _sharedMemoryView.Write(0, 0); // 重置状态
+                    _dataProcessedEvent?.Set();
+                    
+                    // 转换为字符串
+                    return Encoding.UTF8.GetString(_memoryBuffer, 0, length);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"从共享内存读取字幕失败: {ex.Message}");
+                _useSharedMemory = false;
+                return string.Empty;
+            }
+        }
+        
+        // 优化：使用UI自动化获取字幕
+        private static string GetCaptionsFromUIAutomation()
         {
             try
             {
@@ -528,29 +946,6 @@ namespace LiveCaptionsTranslator.utils
                 MonitorLiveCaptionsMemory();
                 
                 performanceMonitor.Restart();
-                
-                // 首先尝试从共享内存获取字幕
-                if (_useSharedMemory && _sharedMemoryInitialized)
-                {
-                    string sharedText = GetCaptionsFromSharedMemory();
-                    if (!string.IsNullOrEmpty(sharedText))
-                    {
-                        // 重置失败计数
-                        consecutiveFailureCount = 0;
-                        
-                        performanceMonitor.Stop();
-                        if (performanceMonitor.ElapsedMilliseconds < 5)
-                        {
-                            // 共享内存访问非常快，可以考虑减少高延迟计数
-                            if (consecutiveSlowResponses > 0)
-                                consecutiveSlowResponses--;
-                        }
-                        
-                        return sharedText;
-                    }
-                }
-                
-                // 如果共享内存获取失败，回退到UI自动化
                 
                 // 优化：缓存字幕文本元素以减少UI自动化操作的开销
                 if (captionsTextBlock == null)
@@ -565,12 +960,6 @@ namespace LiveCaptionsTranslator.utils
                 try
                 {
                     string captionText = captionsTextBlock?.Current.Name ?? string.Empty;
-                    
-                    // 如果使用共享内存，将当前字幕写入共享内存
-                    if (_useSharedMemory && _sharedMemoryInitialized && !string.IsNullOrEmpty(captionText))
-                    {
-                        WriteToSharedMemory(captionText);
-                    }
                     
                     // 重置失败计数
                     consecutiveFailureCount = 0;
@@ -671,48 +1060,6 @@ namespace LiveCaptionsTranslator.utils
                 return string.Empty;
             }
         }
-        
-        // 从共享内存中获取字幕
-        private static string GetCaptionsFromSharedMemory()
-        {
-            if (!_sharedMemoryInitialized)
-                return string.Empty;
-                
-            try
-            {
-                lock (_sharedMemoryLock)
-                {
-                    // 读取状态标志
-                    int status = _sharedMemoryView.ReadInt32(0);
-                    if (status != 2) // 2表示有新的字幕数据
-                        return string.Empty;
-                        
-                    // 读取字幕长度
-                    int length = _sharedMemoryView.ReadInt32(4);
-                    if (length <= 0 || length > 4000) // 合理的最大长度
-                        return string.Empty;
-                        
-                    // 读取字幕内容
-                    _sharedMemoryView.ReadArray(8, _memoryBuffer, 0, length);
-                    
-                    // 计算内容哈希值并比较是否有变化
-                    long hash = ComputeHash(_memoryBuffer, length);
-                    if (hash == _lastCaptionHash)
-                        return string.Empty; // 相同内容，没有变化
-                        
-                    _lastCaptionHash = hash;
-                    
-                    // 转换为字符串
-                    return Encoding.UTF8.GetString(_memoryBuffer, 0, length);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"从共享内存读取字幕失败: {ex.Message}");
-                _useSharedMemory = false;
-                return string.Empty;
-            }
-        }
 
         // 将字幕写入共享内存
         private static void WriteToSharedMemory(string text)
@@ -733,14 +1080,27 @@ namespace LiveCaptionsTranslator.utils
                         
                     _lastCaptionHash = hash;
                     
+                    // 写入协议版本
+                    _sharedMemoryView.Write(8, PROTOCOL_VERSION);
+                    
+                    // 写入时间戳
+                    _sharedMemoryView.Write(12, DateTime.UtcNow.Ticks);
+                    
                     // 写入字幕长度
                     _sharedMemoryView.Write(4, textBytes.Length);
                     
                     // 写入字幕内容
-                    _sharedMemoryView.WriteArray(8, textBytes, 0, textBytes.Length);
+                    _sharedMemoryView.WriteArray(32, textBytes, 0, textBytes.Length);
+                    
+                    // 计算校验和
+                    int checksum = ComputeChecksum(textBytes, textBytes.Length);
+                    _sharedMemoryView.Write(28, checksum);
                     
                     // 更新状态标志为2，表示有新的字幕数据
                     _sharedMemoryView.Write(0, 2);
+                    
+                    // 通知等待的进程
+                    _dataReadyEvent?.Set();
                 }
             }
             catch (Exception ex)
@@ -765,6 +1125,27 @@ namespace LiveCaptionsTranslator.utils
             }
             
             return (long)hash;
+        }
+        
+        // 返回当前字幕文本，优先从队列获取
+        public static string GetCaptions(AutomationElement window)
+        {
+            try
+            {
+                // 首先尝试从队列获取最新字幕
+                if (_captionQueue.TryDequeue(out string latestCaption))
+                {
+                    return latestCaption;
+                }
+                
+                // 如果队列为空，返回最后获取的字幕
+                return _lastCaptionText;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"获取字幕文本失败: {ex.Message}");
+                return string.Empty;
+            }
         }
         
         // 基于系统负载调整采样间隔
@@ -1177,17 +1558,42 @@ namespace LiveCaptionsTranslator.utils
         {
             try
             {
+                // 停止字幕收集线程和心跳线程
+                _isCaptionCollectorRunning = false;
+                _isHeartbeatRunning = false;
+                
+                // 给线程一些时间自行退出
+                Thread.Sleep(100);
+                
+                // 尝试中断线程
+                try
+                {
+                    if (_captionCollectorThread.IsAlive)
+                        _captionCollectorThread.Interrupt();
+                        
+                    if (_heartbeatThread.IsAlive)
+                        _heartbeatThread.Interrupt();
+                }
+                catch
+                {
+                    // 忽略中断错误
+                }
+                
                 // 取消事件订阅
                 PerformanceStateChanged = null;
                 LiveCaptionsMemoryIssue = null;
                 LiveCaptionsRecoveryAttempt = null;
                 LiveCaptionsRestartRequested = null;
+                CaptionUpdated = null;
                 
                 // 清理共享内存
                 CleanupSharedMemory();
                 
                 // 清理自动化元素缓存
                 _automationElementCache.Clear();
+                
+                // 清空字幕队列
+                while (_captionQueue.TryDequeue(out _)) { }
                 
                 // 重置各种标志
                 _useSharedMemory = false;
