@@ -49,6 +49,13 @@ namespace LiveCaptionsTranslator
             "the", "a", "an", "and", "but", "or", "so", "because", "if", "when", "where", "how", "why", "what", "who",
             "which", "whose", "我", "你", "他", "她", "它", "我们", "你们", "他们", "她们", "这", "那", "这些", "那些", "因为", "所以"
         };
+        
+        // 性能监控相关变量
+        private static readonly Stopwatch performanceMonitor = new Stopwatch();
+        private static int consecutiveHighLatencyCount = 0;
+        private static int basePollingInterval = 25; // 默认轮询间隔(毫秒)
+        private static int currentPollingInterval = 25;
+        private static int consecutiveLowCPUCount = 0;
 
         public static AutomationElement? Window
         {
@@ -69,6 +76,9 @@ namespace LiveCaptionsTranslator
             
             caption = Caption.GetInstance();
             setting = Setting.Load();
+            
+            // 初始化性能监控
+            performanceMonitor.Start();
         }
 
         public static void SyncLoop()
@@ -76,16 +86,32 @@ namespace LiveCaptionsTranslator
             int idleCount = 0;
             int syncCount = 0;
             int failureCount = 0; // 记录连续失败次数
+            string lastFullText = string.Empty; // 用于比较文本是否变化
             
             // 性能优化 - 重用StringBuilder以减少内存分配
             StringBuilder textProcessor = new StringBuilder(1024);
+            
+            // 动态调整采样率相关
+            DateTime lastCPUCheck = DateTime.MinValue;
+            int cpuCheckInterval = 5000; // 5秒检查一次CPU使用率
 
             while (true)
             {
                 try
                 {
+                    // 性能优化 - 动态调整轮询间隔
+                    AdjustPollingInterval();
+                    
+                    // 定期检查CPU使用率并调整采样策略
+                    if ((DateTime.Now - lastCPUCheck).TotalMilliseconds > cpuCheckInterval)
+                    {
+                        MonitorSystemPerformance();
+                        lastCPUCheck = DateTime.Now;
+                    }
+                
                     if (Window == null)
                     {
+                        // 睡眠更长时间，减少重试频率
                         Thread.Sleep(2000);
                         continue;
                     }
@@ -96,8 +122,29 @@ namespace LiveCaptionsTranslator
                         // Check LiveCaptions.exe still alive
                         var info = Window.Current;
                         var name = info.Name;
+                        
+                        // 获取LiveCaptions识别的文本之前测量时间
+                        performanceMonitor.Restart();
+                        
                         // Get the text recognized by LiveCaptions (10-20ms)
                         fullText = LiveCaptionsHandler.GetCaptions(Window);
+                        
+                        // 记录获取文本的时间，如果超过阈值则调整策略
+                        performanceMonitor.Stop();
+                        if (performanceMonitor.ElapsedMilliseconds > 25)
+                        {
+                            consecutiveHighLatencyCount++;
+                            if (consecutiveHighLatencyCount > 5)
+                            {
+                                // 连续多次高延迟，增加轮询间隔
+                                currentPollingInterval = Math.Min(currentPollingInterval + 5, 100);
+                                consecutiveHighLatencyCount = 0;
+                            }
+                        }
+                        else
+                        {
+                            consecutiveHighLatencyCount = 0;
+                        }
                         
                         // 重置失败计数
                         failureCount = 0;     
@@ -132,8 +179,18 @@ namespace LiveCaptionsTranslator
                         Thread.Sleep(500); // 出错时稍微延长等待时间
                         continue;
                     }
-                    if (string.IsNullOrEmpty(fullText))
+                    
+                    // 性能优化 - 检查文本是否变化，如无变化则跳过处理
+                    if (string.IsNullOrEmpty(fullText) || fullText == lastFullText)
+                    {
+                        // 无变化时增加空闲计数并使用较长的睡眠时间
+                        idleCount++;
+                        Thread.Sleep(currentPollingInterval * 2); // 空闲时延长睡眠时间
                         continue;
+                    }
+                    
+                    // 更新上次文本
+                    lastFullText = fullText;
 
                     // 性能优化 - 使用StringBuilder进行文本处理，减少字符串分配
                     textProcessor.Clear();
@@ -226,7 +283,9 @@ namespace LiveCaptionsTranslator
                         syncCount = 0;
                         pendingTextQueue.Enqueue(Caption.OriginalCaption);
                     }
-                    Thread.Sleep(25);
+                    
+                    // 性能优化 - 动态调整睡眠时间
+                    Thread.Sleep(currentPollingInterval);
                 }
                 catch (Exception ex)
                 {
@@ -248,6 +307,69 @@ namespace LiveCaptionsTranslator
                     }
                     Thread.Sleep(1000); // 出现未知错误时延长等待时间
                 }
+            }
+        }
+        
+        // 性能优化 - 监控系统性能并动态调整策略
+        private static void MonitorSystemPerformance()
+        {
+            try
+            {
+                // 检测CPU使用率
+                var process = Process.GetCurrentProcess();
+                double cpuUsage = process.TotalProcessorTime.TotalMilliseconds / 
+                                  (Environment.ProcessorCount * process.UserProcessorTime.TotalMilliseconds);
+                
+                // 根据CPU使用率调整策略
+                if (cpuUsage > 0.7) // 70% CPU使用率
+                {
+                    // CPU负载高，增加轮询间隔，减少处理频率
+                    currentPollingInterval = Math.Min(currentPollingInterval + 10, 100);
+                    consecutiveLowCPUCount = 0;
+                }
+                else if (cpuUsage < 0.3) // 30% CPU使用率
+                {
+                    // CPU负载低
+                    consecutiveLowCPUCount++;
+                    if (consecutiveLowCPUCount > 3)
+                    {
+                        // 连续多次低CPU负载，可以适当减少轮询间隔
+                        currentPollingInterval = Math.Max(currentPollingInterval - 5, basePollingInterval);
+                        consecutiveLowCPUCount = 0;
+                    }
+                }
+                
+                // 检测内存使用
+                long memoryUsed = process.WorkingSet64 / (1024 * 1024); // MB
+                
+                // 如果内存使用过高，触发GC
+                if (memoryUsed > 200) // 200MB
+                {
+                    GC.Collect(1, GCCollectionMode.Optimized);
+                }
+            }
+            catch
+            {
+                // 忽略性能监控错误
+            }
+        }
+        
+        // 性能优化 - 动态调整轮询间隔
+        private static void AdjustPollingInterval()
+        {
+            // 这个方法根据各种因素动态调整轮询间隔
+            // 比如考虑LiveCaptions的响应时间、CPU使用率等
+            
+            // 例如：根据队列长度调整
+            if (pendingTextQueue.Count > 3)
+            {
+                // 积压的翻译请求过多，暂时增加轮询间隔，减轻负担
+                currentPollingInterval = Math.Min(currentPollingInterval + 5, 100);
+            }
+            else if (pendingTextQueue.Count == 0 && currentPollingInterval > basePollingInterval)
+            {
+                // 翻译队列为空，可以考虑逐渐恢复到基础轮询间隔
+                currentPollingInterval = Math.Max(currentPollingInterval - 1, basePollingInterval);
             }
         }
 
@@ -390,11 +512,14 @@ namespace LiveCaptionsTranslator
         {
             var translationTaskQueue = new TranslationTaskQueue();
             int errorCount = 0;
+            DateTime lastTranslationTime = DateTime.Now;
+            int translationIdleThreshold = 5000; // 5秒无翻译活动的阈值
 
             while (true)
             {
                 try
                 {
+                    // 检查LiveCaptions窗口状态
                     if (Window == null)
                     {
                         Caption.DisplayTranslatedCaption = "[警告] LiveCaptions意外关闭，正在重启...";
@@ -402,8 +527,11 @@ namespace LiveCaptionsTranslator
                         Caption.DisplayTranslatedCaption = "";
                     }
 
+                    // 处理待翻译文本队列
                     if (pendingTextQueue.Count > 0)
                     {
+                        lastTranslationTime = DateTime.Now;
+
                         try
                         {
                             var originalSnapshot = pendingTextQueue.Dequeue();
@@ -462,8 +590,9 @@ namespace LiveCaptionsTranslator
                             }
 
                             // If the original sentence is a complete sentence, pause for better visual experience.
+                            // 性能优化 - 根据是否有完整句子动态调整等待时间
                             if (Array.IndexOf(TextUtil.PUNC_EOS, originalSnapshot[^1]) != -1)
-                                Thread.Sleep(600);
+                                Thread.Sleep(Math.Min(600, currentPollingInterval * 10)); // 限制最大等待时间
                         }
                         catch (InvalidOperationException)
                         {
@@ -471,7 +600,22 @@ namespace LiveCaptionsTranslator
                             Thread.Sleep(100);
                         }
                     }
-                    Thread.Sleep(40);
+                    else
+                    {
+                        // 性能优化 - 翻译队列为空时使用更长的睡眠时间
+                        // 检查距离上次翻译的时间
+                        TimeSpan idleTime = DateTime.Now - lastTranslationTime;
+                        if (idleTime.TotalMilliseconds > translationIdleThreshold)
+                        {
+                            // 长时间无翻译活动，使用更长的睡眠时间，降低资源占用
+                            Thread.Sleep(Math.Min(200, currentPollingInterval * 4));
+                        }
+                        else
+                        {
+                            // 正常睡眠
+                            Thread.Sleep(currentPollingInterval * 2);
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
