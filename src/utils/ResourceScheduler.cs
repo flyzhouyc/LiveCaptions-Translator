@@ -758,9 +758,8 @@ namespace LiveCaptionsTranslator.utils
                 {
                     try
                     {
-                        await action(token);
-                        //taskCompletionSource.TrySetResult(result);
-                        return Task.CompletedTask;
+                        var result = await action(token); // 保存操作的返回值
+                        taskCompletionSource.TrySetResult(result); // 设置结果
                     }
                     catch (OperationCanceledException)
                     {
