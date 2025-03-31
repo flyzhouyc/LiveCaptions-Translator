@@ -67,6 +67,29 @@ namespace LiveCaptionsTranslator
                 }
             });
             
+            // 初始化延迟加载任务 - 添加调用
+            InitializeDeferredTasks();
+            
+            // 注册退出事件处理器
+            this.Exit += OnProcessExit;
+            
+            // 订阅LiveCaptions事件 - 添加订阅
+            PerformanceMonitor.SystemLoadChanged += OnSystemLoadChanged;
+            LiveCaptionsHandler.PerformanceStateChanged += OnLiveCaptionsPerformanceChanged;
+            LiveCaptionsHandler.LiveCaptionsMemoryIssue += OnLiveCaptionsMemoryIssue;
+            LiveCaptionsHandler.LiveCaptionsRecoveryAttempt += OnLiveCaptionsRecoveryAttempt;
+            LiveCaptionsHandler.LiveCaptionsRestartRequested += OnLiveCaptionsRestartRequested;
+            
+            // 初始化取消令牌源 - 添加初始化
+            cancellationTokenSource = new CancellationTokenSource();
+            
+            // 启动性能监控
+            PerformanceMonitor.StartMonitoring();
+            
+            // 启动核心循环任务 - 添加任务启动
+            syncLoopTask = Task.Run(() => Translator.SyncLoop());
+            translateLoopTask = Task.Run(() => Translator.TranslateLoop());
+            
             base.OnStartup(e);
         }
         
@@ -447,7 +470,7 @@ namespace LiveCaptionsTranslator
             try
             {
                 // 取消正在进行的任务
-                cancellationTokenSource.Cancel();
+                cancellationTokenSource?.Cancel();
                 
                 // 清理LiveCaptions
                 if (Translator.Window != null)
@@ -476,6 +499,12 @@ namespace LiveCaptionsTranslator
                 // 确保在应用退出时所有资源都被正确释放
                 
                 // 取消所有任务
+                if (cancellationTokenSource != null)
+                {
+                    cancellationTokenSource.Cancel();
+                    cancellationTokenSource.Dispose();
+                }
+                
                 if (Translator.Setting != null)
                 {
                     // 确保所有待保存的设置都被保存
