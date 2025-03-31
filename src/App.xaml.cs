@@ -29,11 +29,8 @@ namespace LiveCaptionsTranslator
         private PerformanceIndicator performanceIndicator;
         private bool isIndicatorVisible = false;
         
-        App()
+        protected override void OnStartup(StartupEventArgs e)
         {
-            // 注册进程退出处理
-            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
-            
             // 配置进程优先级
             try
             {
@@ -44,28 +41,33 @@ namespace LiveCaptionsTranslator
                 // 忽略优先级设置失败
             }
             
-            // 启动性能监控
-            PerformanceMonitor.StartMonitoring();
-            PerformanceMonitor.SystemLoadChanged += OnSystemLoadChanged;
+            // 优化内存设置
+            Environment.SetEnvironmentVariable("COMPlus_gcConcurrent", "1"); // 启用并发GC
+            Environment.SetEnvironmentVariable("COMPlus_gcServer", "0"); // 禁用服务器GC，对WPF更友好
+            Environment.SetEnvironmentVariable("COMPlus_Thread_UseAllCpuGroups", "1"); // 使用所有CPU组
             
-            // 注册LiveCaptions事件
-            LiveCaptionsHandler.PerformanceStateChanged += OnLiveCaptionsPerformanceChanged;
-            LiveCaptionsHandler.LiveCaptionsMemoryIssue += OnLiveCaptionsMemoryIssue;
-            LiveCaptionsHandler.LiveCaptionsRecoveryAttempt += OnLiveCaptionsRecoveryAttempt;
-            LiveCaptionsHandler.LiveCaptionsRestartRequested += OnLiveCaptionsRestartRequested;
-            
-            // 初始化取消令牌源
-            cancellationTokenSource = new CancellationTokenSource();
-            
-            // 启动任务
-            syncLoopTask = Task.Run(() => Translator.SyncLoop());
-            translateLoopTask = Task.Run(() => Translator.TranslateLoop());
-            
-            // 延迟初始化非关键任务
-            Dispatcher.BeginInvoke(new Action(() => 
+            // 预热应用程序
+            Task.Run(() => 
             {
-                InitializeDeferredTasks();
-            }), DispatcherPriority.Background);
+                // 预热Translator类
+                try
+                {
+                    TranslateAPI.TRANSLATE_FUNCTIONS["Google"]("hello", CancellationToken.None).Wait(1000);
+                }
+                catch
+                {
+                    // 忽略预热错误
+                }
+                
+                // 预热对象池
+                for (int i = 0; i < 5; i++)
+                {
+                    var task = TranslationTaskPool.Obtain();
+                    TranslationTaskPool.Return(task);
+                }
+            });
+            
+            base.OnStartup(e);
         }
         
         // 初始化延迟加载任务
@@ -471,35 +473,35 @@ namespace LiveCaptionsTranslator
         {
             try
             {
-                // 确保取消所有任务
-                cancellationTokenSource.Cancel();
+                // 确保在应用退出时所有资源都被正确释放
                 
-                // 等待任务完成，但设置超时避免卡住
-                Task.WaitAll(new[] { syncLoopTask, translateLoopTask }, 1000);
+                // 取消所有任务
+                if (Translator.Setting != null)
+                {
+                    // 确保所有待保存的设置都被保存
+                    BatchSettingsSave.CommitAllPendingChangesAsync().Wait(1000);
+                }
                 
-                // 清理资源
+                // 清理LiveCaptions
                 if (Translator.Window != null)
                 {
                     LiveCaptionsHandler.RestoreLiveCaptions(Translator.Window);
                     LiveCaptionsHandler.KillLiveCaptions(Translator.Window);
                 }
                 
-                // 关闭性能指示器
-                if (isIndicatorVisible && performanceIndicator != null)
-                {
-                    try
-                    {
-                        performanceIndicator.Close();
-                    }
-                    catch
-                    {
-                        // 忽略关闭错误
-                    }
-                }
+                // 清理LiveCaptionsHandler资源
+                LiveCaptionsHandler.Cleanup();
+                
+                // 清理对象池
+                TranslationTaskPool.Reset();
+                
+                // 最后尝试强制GC
+                GC.Collect(2, GCCollectionMode.Forced);
+                GC.WaitForPendingFinalizers();
             }
-            catch
+            catch (Exception ex)
             {
-                // 忽略退出时的错误
+                Console.WriteLine($"应用退出时清理资源失败: {ex.Message}");
             }
             finally
             {

@@ -19,6 +19,8 @@
             <Style x:Key="CaptionBlockStyle" TargetType="TextBlock">
                 <Setter Property="TextWrapping" Value="Wrap" />
                 <Setter Property="VerticalAlignment" Value="Stretch" />
+                <!-- 性能优化：启用缓存 -->
+                <Setter Property="CacheMode" Value="BitmapCache" />
             </Style>
         </Grid.Resources>
 
@@ -66,7 +68,15 @@
                 x:Name="CaptionLogItems"
                 MinHeight="50"
                 ItemsSource="{Binding DisplayLogCards, UpdateSourceTrigger=PropertyChanged}"
-                VirtualizingPanel.IsVirtualizing="True">
+                VirtualizingPanel.IsVirtualizing="True"
+                VirtualizingPanel.VirtualizationMode="Recycling"
+                VirtualizingPanel.CacheLength="2"
+                VirtualizingPanel.CacheLengthUnit="Page">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Border
@@ -115,6 +125,5 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ui:Card>
-
     </Grid>
 </Page>
