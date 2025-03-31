@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Windows;
-using System.Windows.Media;
+using System.Windows.Controls; // 添加此行
+using System.Windows.Media;    // 添加此行
 using System.Windows.Threading;
 
 using LiveCaptionsTranslator.utils;
