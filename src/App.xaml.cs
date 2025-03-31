@@ -409,16 +409,16 @@ namespace LiveCaptionsTranslator
                         {
                             try
                             {
-                                // 使用MessageBox替代Snackbar，因为项目可能没有适当的Snackbar控件
-                                MessageBox.Show(
+                                // 使用System.Windows.MessageBox，明确指定命名空间避免冲突
+                                System.Windows.MessageBox.Show(
                                     mainWindow,
                                     notification.Message,
                                     "LiveCaptions Translator",
-                                    MessageBoxButton.OK,
-                                    notification.Type == NotificationType.Error ? MessageBoxImage.Error :
-                                    notification.Type == NotificationType.Warning ? MessageBoxImage.Warning :
-                                    notification.Type == NotificationType.Success ? MessageBoxImage.Information :
-                                    MessageBoxImage.Information);
+                                    System.Windows.MessageBoxButton.OK,
+                                    notification.Type == NotificationType.Error ? System.Windows.MessageBoxImage.Error :
+                                    notification.Type == NotificationType.Warning ? System.Windows.MessageBoxImage.Warning :
+                                    notification.Type == NotificationType.Success ? System.Windows.MessageBoxImage.Information :
+                                    System.Windows.MessageBoxImage.Information);
                             }
                             catch
                             {
