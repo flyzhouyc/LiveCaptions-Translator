@@ -22,6 +22,17 @@ namespace LiveCaptionsTranslator.utils
         private static int autoRecoveryAttempts = 0;
         private static DateTime lastRecoveryTime = DateTime.MinValue;
         private static readonly TimeSpan recoveryThrottleTime = TimeSpan.FromMinutes(2);
+        
+        // 添加更多控制参数
+        private static int consecutiveFailureCount = 0;
+        private static readonly int maxRetryAttempts = 3;
+        private static readonly TimeSpan recoveryDelay = TimeSpan.FromSeconds(0.5);
+        private static readonly TimeSpan memoryCheckInterval = TimeSpan.FromSeconds(30);
+        private static DateTime lastMemoryCheckTime = DateTime.MinValue;
+        private static long lastMemoryUsage = 0;
+        private static int baseSampleInterval = 25; // 默认字幕采样间隔(毫秒)
+        private static int currentSampleInterval = 25;
+        private static bool isHighLoadMode = false;
 
         public static AutomationElement LaunchLiveCaptions()
         {
@@ -81,6 +92,21 @@ namespace LiveCaptionsTranslator.utils
                     
                     // 更友好的等待方式
                     Thread.Sleep(100);
+                }
+                
+                // 初始化内存监控
+                if (processId > 0)
+                {
+                    try
+                    {
+                        var proc = Process.GetProcessById(processId);
+                        lastMemoryUsage = proc.WorkingSet64;
+                        lastMemoryCheckTime = DateTime.Now;
+                    }
+                    catch
+                    {
+                        // 忽略内存监控初始化错误
+                    }
                 }
                 
                 return window;
@@ -160,6 +186,9 @@ namespace LiveCaptionsTranslator.utils
                 windowHandle = null;
                 captionsTextBlock = null;
                 processId = -1;
+                consecutiveFailureCount = 0;
+                isHighLoadMode = false;
+                currentSampleInterval = baseSampleInterval;
             }
             catch (Exception ex)
             {
@@ -268,6 +297,12 @@ namespace LiveCaptionsTranslator.utils
         {
             try
             {
+                // 检查系统负载状态，调整采样间隔
+                AdjustSampleIntervalBasedOnSystemLoad();
+                
+                // 周期性检查LiveCaptions内存使用
+                MonitorLiveCaptionsMemory();
+                
                 performanceMonitor.Restart();
                 
                 // 优化：缓存字幕文本元素以减少UI自动化操作的开销
@@ -284,6 +319,9 @@ namespace LiveCaptionsTranslator.utils
                 {
                     string captionText = captionsTextBlock?.Current.Name ?? string.Empty;
                     
+                    // 重置失败计数
+                    consecutiveFailureCount = 0;
+                    
                     // 监控获取字幕的性能
                     performanceMonitor.Stop();
                     if (performanceMonitor.ElapsedMilliseconds > 50) // 阈值50毫秒
@@ -293,7 +331,12 @@ namespace LiveCaptionsTranslator.utils
                         {
                             // 连续多次响应缓慢，切换到低资源模式
                             isLowResourceMode = true;
+                            isHighLoadMode = true;
+                            currentSampleInterval = Math.Min(currentSampleInterval * 2, 100); // 增加采样间隔
                             Console.WriteLine("检测到LiveCaptions响应缓慢，切换到低资源模式");
+                            
+                            // 尝试通知应用主线程
+                            NotifyPerformanceStateChanged(PerformanceState.LowResource);
                             
                             // 尝试减轻系统负担，调整LiveCaptions进程优先级
                             try
@@ -323,7 +366,12 @@ namespace LiveCaptionsTranslator.utils
                         if (consecutiveSlowResponses == 0 && isLowResourceMode)
                         {
                             isLowResourceMode = false;
+                            isHighLoadMode = false;
+                            currentSampleInterval = baseSampleInterval;
                             Console.WriteLine("LiveCaptions响应恢复正常，退出低资源模式");
+                            
+                            // 尝试通知应用主线程
+                            NotifyPerformanceStateChanged(PerformanceState.Normal);
                         }
                     }
                     
@@ -331,11 +379,26 @@ namespace LiveCaptionsTranslator.utils
                 }
                 catch (ElementNotAvailableException)
                 {
-                    // 清除缓存的元素并重新抛出异常
+                    // 清除缓存的元素
                     captionsTextBlock = null;
                     
+                    // 增加失败计数并应用渐进式回退策略
+                    consecutiveFailureCount++;
+                    
+                    if (consecutiveFailureCount <= maxRetryAttempts)
+                    {
+                        // 等待时间随失败次数增加而延长
+                        Thread.Sleep((int)recoveryDelay.TotalMilliseconds * consecutiveFailureCount);
+                        
+                        // 尝试恢复LiveCaptions窗口
+                        TryRecoverLiveCaptions(window);
+                    }
+                    
                     // 检查是否需要尝试自动恢复
-                    TryAutoRecovery(window);
+                    if (consecutiveFailureCount > maxRetryAttempts)
+                    {
+                        TryAutoRecovery(window);
+                    }
                     
                     throw;
                 }
@@ -350,6 +413,114 @@ namespace LiveCaptionsTranslator.utils
                 Console.WriteLine($"获取字幕失败: {ex.Message}");
                 captionsTextBlock = null;
                 return string.Empty;
+            }
+        }
+        
+        // 基于系统负载调整采样间隔
+        private static void AdjustSampleIntervalBasedOnSystemLoad()
+        {
+            try
+            {
+                var systemState = PerformanceMonitor.CurrentSystemState;
+                
+                switch (systemState)
+                {
+                    case PerformanceMonitor.SystemLoadState.High:
+                        if (!isHighLoadMode)
+                        {
+                            isHighLoadMode = true;
+                            currentSampleInterval = Math.Min(baseSampleInterval * 2, 100);
+                            Console.WriteLine("检测到系统负载较高，降低字幕采样频率");
+                        }
+                        break;
+                        
+                    case PerformanceMonitor.SystemLoadState.Critical:
+                        isHighLoadMode = true;
+                        currentSampleInterval = Math.Min(baseSampleInterval * 4, 200);
+                        Console.WriteLine("检测到系统负载临界，显著降低字幕采样频率");
+                        break;
+                        
+                    case PerformanceMonitor.SystemLoadState.Normal:
+                        if (isHighLoadMode)
+                        {
+                            isHighLoadMode = false;
+                            currentSampleInterval = baseSampleInterval;
+                            Console.WriteLine("系统负载恢复正常，恢复默认字幕采样频率");
+                        }
+                        break;
+                }
+            }
+            catch
+            {
+                // 忽略负载检测错误
+            }
+        }
+        
+        // 监控LiveCaptions进程内存使用
+        private static void MonitorLiveCaptionsMemory()
+        {
+            try
+            {
+                if (processId <= 0 || DateTime.Now - lastMemoryCheckTime < memoryCheckInterval)
+                    return;
+                    
+                var process = Process.GetProcessById(processId);
+                if (process == null)
+                    return;
+                    
+                long currentMemory = process.WorkingSet64;
+                lastMemoryCheckTime = DateTime.Now;
+                
+                // 检测内存增长率
+                long memoryGrowth = currentMemory - lastMemoryUsage;
+                lastMemoryUsage = currentMemory;
+                
+                // 如果内存使用超过200MB或快速增长，尝试回收内存
+                if (currentMemory > 200 * 1024 * 1024 || memoryGrowth > 50 * 1024 * 1024)
+                {
+                    // 可能的内存泄漏，考虑重启LiveCaptions
+                    if (currentMemory > 500 * 1024 * 1024)
+                    {
+                        // 通知主应用存在潜在的内存问题
+                        NotifyLiveCaptionsMemoryIssue(currentMemory / (1024 * 1024));
+                        
+                        // 内存使用过高，考虑重启LiveCaptions
+                        if (DateTime.Now - lastRecoveryTime > TimeSpan.FromMinutes(10))
+                        {
+                            // 仅当距离上次恢复足够长时间后才尝试重启
+                            Console.WriteLine($"LiveCaptions内存使用过高 ({currentMemory / (1024 * 1024)}MB)，准备重启");
+                            lastRecoveryTime = DateTime.Now;
+                            
+                            // 在单独线程中请求重启
+                            Task.Run(() => RequestLiveCaptionsRestart());
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略内存监控错误
+            }
+        }
+        
+        // 尝试恢复LiveCaptions
+        private static void TryRecoverLiveCaptions(AutomationElement window)
+        {
+            try
+            {
+                Console.WriteLine($"尝试恢复LiveCaptions (尝试 #{consecutiveFailureCount})");
+                
+                // 尝试显示再隐藏窗口
+                RestoreLiveCaptions(window);
+                Thread.Sleep(300);
+                HideLiveCaptions(window);
+                
+                // 重新查找字幕元素
+                captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
+            }
+            catch
+            {
+                // 忽略恢复过程中的错误
             }
         }
         
@@ -377,11 +548,58 @@ namespace LiveCaptionsTranslator.utils
                 
                 // 重新查找字幕元素
                 captionsTextBlock = FindElementByAId(window, "CaptionsTextBlock");
+                
+                // 通知应用LiveCaptions已尝试恢复
+                NotifyLiveCaptionsRecoveryAttempt(autoRecoveryAttempts);
             }
             catch
             {
                 // 忽略恢复过程中的错误
             }
+        }
+        
+        // 性能状态枚举
+        public enum PerformanceState
+        {
+            Normal,
+            LowResource,
+            Critical
+        }
+        
+        // 性能状态变更事件
+        public static event Action<PerformanceState>? PerformanceStateChanged;
+        
+        // 内存问题通知事件
+        public static event Action<long>? LiveCaptionsMemoryIssue;
+        
+        // LiveCaptions恢复尝试事件
+        public static event Action<int>? LiveCaptionsRecoveryAttempt;
+        
+        // LiveCaptions重启请求事件
+        public static event Action? LiveCaptionsRestartRequested;
+        
+        // 通知性能状态改变
+        private static void NotifyPerformanceStateChanged(PerformanceState state)
+        {
+            PerformanceStateChanged?.Invoke(state);
+        }
+        
+        // 通知LiveCaptions内存问题
+        private static void NotifyLiveCaptionsMemoryIssue(long memoryMB)
+        {
+            LiveCaptionsMemoryIssue?.Invoke(memoryMB);
+        }
+        
+        // 通知LiveCaptions恢复尝试
+        private static void NotifyLiveCaptionsRecoveryAttempt(int attemptCount)
+        {
+            LiveCaptionsRecoveryAttempt?.Invoke(attemptCount);
+        }
+        
+        // 请求重启LiveCaptions
+        private static void RequestLiveCaptionsRestart()
+        {
+            LiveCaptionsRestartRequested?.Invoke();
         }
 
         private static AutomationElement FindWindowByPId(int processId)
@@ -525,6 +743,57 @@ namespace LiveCaptionsTranslator.utils
             {
                 Console.WriteLine($"终止所有{processName}进程失败: {ex.Message}");
             }
+        }
+        
+        // 重置性能计数器
+        public static void ResetPerformanceCounters()
+        {
+            consecutiveSlowResponses = 0;
+            consecutiveFailureCount = 0;
+            autoRecoveryAttempts = 0;
+            isLowResourceMode = false;
+            isHighLoadMode = false;
+            currentSampleInterval = baseSampleInterval;
+        }
+        
+        // 主动请求优化
+        public static void RequestOptimization(bool aggressive = false)
+        {
+            if (aggressive)
+            {
+                // 强制进入低资源模式
+                isLowResourceMode = true;
+                isHighLoadMode = true;
+                currentSampleInterval = Math.Min(baseSampleInterval * 4, 200);
+                
+                // 尝试减少LiveCaptions的资源占用
+                if (processId > 0)
+                {
+                    try
+                    {
+                        var process = Process.GetProcessById(processId);
+                        process.PriorityClass = ProcessPriorityClass.BelowNormal;
+                    }
+                    catch
+                    {
+                        // 忽略优先级调整失败
+                    }
+                }
+                
+                // 通知已进入低资源模式
+                NotifyPerformanceStateChanged(PerformanceState.Critical);
+            }
+            else
+            {
+                // 轻度优化
+                isHighLoadMode = true;
+                currentSampleInterval = Math.Min(baseSampleInterval * 2, 100);
+                
+                // 通知已进入优化模式
+                NotifyPerformanceStateChanged(PerformanceState.LowResource);
+            }
+            
+            Console.WriteLine($"已应用性能优化 (级别: {(aggressive ? "激进" : "轻度")})");
         }
     }
 }
