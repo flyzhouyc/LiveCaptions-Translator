@@ -27,6 +27,80 @@ namespace LiveCaptionsTranslator.models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        // 代理服务器相关属性
+        private string proxyAddress = "";
+        private int proxyPort = 0;
+        private string proxyUsername = "";
+        private string proxyPassword = "";
+        private bool useProxy = false;
+        private ProxyType proxyType = ProxyType.Http;
+        
+        public enum ProxyType
+        {
+            Http,
+            Socks
+        }
+        
+        public string ProxyAddress
+        {
+            get => proxyAddress;
+            set
+            {
+                proxyAddress = value;
+                OnPropertyChanged("ProxyAddress");
+            }
+        }
+        
+        public int ProxyPort
+        {
+            get => proxyPort;
+            set
+            {
+                proxyPort = value;
+                OnPropertyChanged("ProxyPort");
+            }
+        }
+        
+        public string ProxyUsername
+        {
+            get => proxyUsername;
+            set
+            {
+                proxyUsername = value;
+                OnPropertyChanged("ProxyUsername");
+            }
+        }
+        
+        public string ProxyPassword
+        {
+            get => proxyPassword;
+            set
+            {
+                proxyPassword = value;
+                OnPropertyChanged("ProxyPassword");
+            }
+        }
+        
+        public bool UseProxy
+        {
+            get => useProxy;
+            set
+            {
+                useProxy = value;
+                OnPropertyChanged("UseProxy");
+            }
+        }
+        
+        public ProxyType ProxyTypeEnum
+        {
+            get => proxyType;
+            set
+            {
+                proxyType = value;
+                OnPropertyChanged("ProxyTypeEnum");
+            }
+        }
+
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));

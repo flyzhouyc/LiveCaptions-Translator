@@ -1,8 +1,9 @@
-﻿using System.Net.Http;
+﻿using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions; // 添加此行以引入 Regex 类
+using System.Text.RegularExpressions;
 
 using LiveCaptionsTranslator.models;
 
@@ -38,6 +39,54 @@ namespace LiveCaptionsTranslator.utils
         {
             Timeout = TimeSpan.FromSeconds(5)
         };
+
+        // 添加创建带有代理的HttpClient方法
+        private static HttpClient CreateProxyHttpClient(TranslateAPIConfig config)
+        {
+            var handler = new HttpClientHandler();
+            
+            if (config.UseProxy && !string.IsNullOrEmpty(config.ProxyAddress) && config.ProxyPort > 0)
+            {
+                // 根据代理类型设置不同的Proxy对象
+                if (config.ProxyTypeEnum == TranslateAPIConfig.ProxyType.Http)
+                {
+                    var httpProxy = new WebProxy(
+                        $"http://{config.ProxyAddress}:{config.ProxyPort}", true);
+                        
+                    // 如果有认证信息，则设置认证
+                    if (!string.IsNullOrEmpty(config.ProxyUsername))
+                    {
+                        httpProxy.Credentials = new NetworkCredential(
+                            config.ProxyUsername, config.ProxyPassword);
+                    }
+                    
+                    handler.Proxy = httpProxy;
+                    handler.UseProxy = true;
+                }
+                else if (config.ProxyTypeEnum == TranslateAPIConfig.ProxyType.Socks)
+                {
+                    // 对于SOCKS代理，需要使用特殊的处理方式
+                    // 注意：.NET Standard不直接支持SOCKS代理，这里使用简化的实现
+                    var socksProxy = new WebProxy(
+                        $"socks5://{config.ProxyAddress}:{config.ProxyPort}", true);
+                        
+                    // 如果有认证信息，则设置认证
+                    if (!string.IsNullOrEmpty(config.ProxyUsername))
+                    {
+                        socksProxy.Credentials = new NetworkCredential(
+                            config.ProxyUsername, config.ProxyPassword);
+                    }
+                    
+                    handler.Proxy = socksProxy;
+                    handler.UseProxy = true;
+                }
+            }
+            
+            return new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(10)
+            };
+        }
 
         // 新增方法：根据指定API名称翻译文本
         public static async Task<string> TranslateWithAPI(string text, string apiName, CancellationToken token = default)
@@ -284,10 +333,23 @@ namespace LiveCaptionsTranslator.utils
                       $"tl={language}&" +
                       $"q={encodedText}";
 
+            // 使用带代理的HttpClient
+            var config = Translator.Setting?.CurrentAPIConfig;
+            HttpClient httpClient;
+            
+            if (config?.UseProxy ?? false)
+            {
+                httpClient = CreateProxyHttpClient(config);
+            }
+            else
+            {
+                httpClient = client; // 使用默认的HttpClient
+            }
+
             HttpResponseMessage response;
             try
             {
-                response = await client.GetAsync(url, token);
+                response = await httpClient.GetAsync(url, token);
             }
             catch (OperationCanceledException ex)
             {
@@ -345,13 +407,26 @@ namespace LiveCaptionsTranslator.utils
                          $"term={encodedText}&" +
                          $"strategy={strategy}";
 
+            // 使用带代理的HttpClient
+            var config = Translator.Setting?.CurrentAPIConfig;
+            HttpClient httpClient;
+            
+            if (config?.UseProxy ?? false)
+            {
+                httpClient = CreateProxyHttpClient(config);
+            }
+            else
+            {
+                httpClient = client; // 使用默认的HttpClient
+            }
+
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("x-referer", "chrome-extension://mgijmajocgfcbeboacabfgobmjgjcoja");
 
             HttpResponseMessage response;
             try
             {
-                response = await client.SendAsync(request, token);
+                response = await httpClient.SendAsync(request, token);
             }
             catch (OperationCanceledException ex)
             {
