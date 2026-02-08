@@ -16,6 +16,9 @@ namespace LiveCaptionsTranslator
 {
     public static class Translator
     {
+        public const string ContextHeader = "Previous sentences (context):";
+        public const string CurrentSentenceHeader = "Current sentence to translate:";
+
         private static AutomationElement? window = null;
         private static Caption? caption = null;
         private static Setting? setting = null;
@@ -118,7 +121,7 @@ namespace LiveCaptionsTranslator
             performanceMonitor.Start();
         }
 
-        public static async Task SyncLoop()
+        public static async Task SyncLoop(CancellationToken token = default)
         {
             int idleCount = 0;
             int syncCount = 0;
@@ -145,6 +148,9 @@ namespace LiveCaptionsTranslator
                 {
                     try
                     {
+                        if (token.IsCancellationRequested)
+                            break;
+
                         // 性能优化 - 动态调整轮询间隔
                         AdjustPollingInterval();
                         
@@ -165,7 +171,7 @@ namespace LiveCaptionsTranslator
                         if (Window == null)
                         {
                             // 睡眠更长时间，减少重试频率
-                            await Task.Delay(2000).ConfigureAwait(false);
+                            await Task.Delay(2000, token).ConfigureAwait(false);
                             continue;
                         }
 
@@ -249,7 +255,7 @@ namespace LiveCaptionsTranslator
                                 failureCount = 0;
                             }
                             
-                            await Task.Delay(500).ConfigureAwait(false); // 出错时稍微延长等待时间
+                            await Task.Delay(500, token).ConfigureAwait(false); // 出错时稍微延长等待时间
                             continue;
                         }
                         
@@ -258,7 +264,7 @@ namespace LiveCaptionsTranslator
                         {
                             // 无变化时增加空闲计数并使用较长的睡眠时间
                             idleCount++;
-                            await Task.Delay(currentPollingInterval * 2).ConfigureAwait(false); // 空闲时延长睡眠时间
+                            await Task.Delay(currentPollingInterval * 2, token).ConfigureAwait(false); // 空闲时延长睡眠时间
                             continue;
                         }
                         
@@ -342,7 +348,11 @@ namespace LiveCaptionsTranslator
                         }
                         
                         // 性能优化 - 动态调整睡眠时间
-                        await Task.Delay(currentPollingInterval).ConfigureAwait(false);
+                        await Task.Delay(currentPollingInterval, token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
                     }
                     catch (Exception ex)
                     {
@@ -362,9 +372,13 @@ namespace LiveCaptionsTranslator
                         {
                             // 忽略恢复失败
                         }
-                        await Task.Delay(1000).ConfigureAwait(false); // 出现未知错误时延长等待时间
+                        await Task.Delay(1000, token).ConfigureAwait(false); // 出现未知错误时延长等待时间
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // 退出时忽略取消异常
             }
             finally
             {
@@ -743,7 +757,7 @@ namespace LiveCaptionsTranslator
         }
 
         // 优化：高效的翻译循环，使用TranslationTaskQueue
-        public static async Task TranslateLoop()
+        public static async Task TranslateLoop(CancellationToken token = default)
         {
             var translationTaskQueue = new TranslationTaskQueue();
             DateTime lastTranslationTime = DateTime.Now;
@@ -753,6 +767,9 @@ namespace LiveCaptionsTranslator
             {
                 try
                 {
+                    if (token.IsCancellationRequested)
+                        break;
+
                     // 检查LiveCaptions窗口状态
                     if (Window == null)
                     {
@@ -812,7 +829,7 @@ namespace LiveCaptionsTranslator
                         // If the original sentence is a complete sentence, pause for better visual experience.
                         // 性能优化 - 根据是否有完整句子动态调整等待时间
                         if (Array.IndexOf(TextUtil.PUNC_EOS, originalText[^1]) != -1)
-                            await Task.Delay(Math.Min(600, currentPollingInterval * 10)).ConfigureAwait(false); // 限制最大等待时间
+                            await Task.Delay(Math.Min(600, currentPollingInterval * 10), token).ConfigureAwait(false); // 限制最大等待时间
                     }
                     else
                     {
@@ -822,14 +839,18 @@ namespace LiveCaptionsTranslator
                         if (idleTime.TotalMilliseconds > translationIdleThreshold)
                         {
                             // 长时间无翻译活动，使用更长的睡眠时间，降低资源占用
-                            await Task.Delay(Math.Min(200, currentPollingInterval * 4)).ConfigureAwait(false);
+                            await Task.Delay(Math.Min(200, currentPollingInterval * 4), token).ConfigureAwait(false);
                         }
                         else
                         {
                             // 正常睡眠
-                            await Task.Delay(currentPollingInterval * 2).ConfigureAwait(false);
+                            await Task.Delay(currentPollingInterval * 2, token).ConfigureAwait(false);
                         }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -847,7 +868,7 @@ namespace LiveCaptionsTranslator
                     {
                         // 忽略恢复失败
                     }
-                    await Task.Delay(1000).ConfigureAwait(false);
+                    await Task.Delay(1000, token).ConfigureAwait(false);
                 }
             }
         }
@@ -999,7 +1020,7 @@ namespace LiveCaptionsTranslator
                 
                 if (contextSentencesToUse > 0)
                 {
-                    contextBuilder.AppendLine("Previous sentences for context (keeping the continuity of conversation):");
+                    contextBuilder.AppendLine(ContextHeader);
                     
                     var contextItems = contextHistory.GetItems().Take(contextSentencesToUse).ToArray();
                     for (int i = 0; i < contextItems.Length; i++)
@@ -1011,7 +1032,8 @@ namespace LiveCaptionsTranslator
                         contextBuilder.AppendLine($"- {contextItems[i]}");
                     }
                     
-                    contextBuilder.AppendLine("\nCurrent sentence to translate faithfully:");
+                    contextBuilder.AppendLine();
+                    contextBuilder.AppendLine(CurrentSentenceHeader);
                 }
                 
                 contextBuilder.Append("🔤 ").Append(text).Append(" 🔤");

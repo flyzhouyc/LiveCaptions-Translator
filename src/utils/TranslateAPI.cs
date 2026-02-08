@@ -101,6 +101,26 @@ namespace LiveCaptionsTranslator.utils
             }
         }
 
+        private static string ExtractTextForTraditionalApi(string text)
+        {
+            if (text.Contains(Translator.CurrentSentenceHeader))
+            {
+                string pattern = Regex.Escape(Translator.CurrentSentenceHeader) + @"\s*🔤\s*(.*?)\s*🔤";
+                var match = Regex.Match(text, pattern, RegexOptions.Singleline);
+                if (match.Success)
+                    return match.Groups[1].Value;
+            }
+
+            if (text.Contains("🔤"))
+            {
+                var match = Regex.Match(text, @"🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
+                if (match.Success)
+                    return match.Groups[1].Value;
+            }
+
+            return text;
+        }
+
         public static async Task<string> OpenAI(string text, CancellationToken token = default)
         {
             var config = Translator.Setting.CurrentAPIConfig as OpenAIConfig;
@@ -109,7 +129,7 @@ namespace LiveCaptionsTranslator.utils
                 : Translator.Setting.TargetLanguage; 
             
             // 检测文本是否包含上下文标记
-            bool hasContext = text.Contains("Previous sentences (context):");
+            bool hasContext = text.Contains(Translator.ContextHeader);
             string effectivePrompt;
             
             if (hasContext)
@@ -195,7 +215,7 @@ namespace LiveCaptionsTranslator.utils
                     : Translator.Setting.TargetLanguage;
 
                 // 检测文本是否包含上下文标记
-                bool hasContext = text.Contains("Previous sentences (context):");
+                bool hasContext = text.Contains(Translator.ContextHeader);
                 string effectivePrompt;
                 
                 if (hasContext)
@@ -309,23 +329,7 @@ namespace LiveCaptionsTranslator.utils
             var language = Translator.Setting?.TargetLanguage;
             
             // 如果文本包含上下文提示，只翻译当前句子部分
-            if (text.Contains("Current sentence to translate:"))
-            {
-                var match = Regex.Match(text, @"Current sentence to translate:\s*🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
-                if (match.Success)
-                {
-                    text = match.Groups[1].Value;
-                }
-            }
-            else if (text.Contains("🔤"))
-            {
-                // 如果文本包含标记但没有完整的上下文结构，提取标记内容
-                var match = Regex.Match(text, @"🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
-                if (match.Success)
-                {
-                    text = match.Groups[1].Value;
-                }
-            }
+            text = ExtractTextForTraditionalApi(text);
 
             string encodedText = Uri.EscapeDataString(text);
             var url = $"https://clients5.google.com/translate_a/t?" +
@@ -382,23 +386,7 @@ namespace LiveCaptionsTranslator.utils
             string strategy = "2";
             
             // 如果文本包含上下文提示，只翻译当前句子部分
-            if (text.Contains("Current sentence to translate:"))
-            {
-                var match = Regex.Match(text, @"Current sentence to translate:\s*🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
-                if (match.Success)
-                {
-                    text = match.Groups[1].Value;
-                }
-            }
-            else if (text.Contains("🔤"))
-            {
-                // 如果文本包含标记但没有完整的上下文结构，提取标记内容
-                var match = Regex.Match(text, @"🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
-                if (match.Success)
-                {
-                    text = match.Groups[1].Value;
-                }
-            }
+            text = ExtractTextForTraditionalApi(text);
 
             string encodedText = Uri.EscapeDataString(text);
             string url = $"https://dictionaryextension-pa.googleapis.com/v1/dictionaryExtensionData?" +
@@ -465,7 +453,7 @@ namespace LiveCaptionsTranslator.utils
             var apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
             // 检测文本是否包含上下文标记
-            bool hasContext = text.Contains("Previous sentences (context):");
+            bool hasContext = text.Contains(Translator.ContextHeader);
             string effectivePrompt;
             
             if (hasContext)
@@ -545,23 +533,7 @@ namespace LiveCaptionsTranslator.utils
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl);
 
             // 如果文本包含上下文提示，只翻译当前句子部分
-            if (text.Contains("Current sentence to translate:"))
-            {
-                var match = Regex.Match(text, @"Current sentence to translate:\s*🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
-                if (match.Success)
-                {
-                    text = match.Groups[1].Value;
-                }
-            }
-            else if (text.Contains("🔤"))
-            {
-                // 如果文本包含标记但没有完整的上下文结构，提取标记内容
-                var match = Regex.Match(text, @"🔤\s*(.*?)\s*🔤", RegexOptions.Singleline);
-                if (match.Success)
-                {
-                    text = match.Groups[1].Value;
-                }
-            }
+            text = ExtractTextForTraditionalApi(text);
 
             var requestData = new
             {

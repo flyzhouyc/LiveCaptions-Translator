@@ -87,8 +87,8 @@ namespace LiveCaptionsTranslator
             PerformanceMonitor.StartMonitoring();
             
             // 启动核心循环任务 - 添加任务启动
-            syncLoopTask = Task.Run(() => Translator.SyncLoop());
-            translateLoopTask = Task.Run(() => Translator.TranslateLoop());
+            syncLoopTask = Task.Run(() => Translator.SyncLoop(cancellationTokenSource.Token));
+            translateLoopTask = Task.Run(() => Translator.TranslateLoop(cancellationTokenSource.Token));
             
             base.OnStartup(e);
         }
@@ -469,8 +469,8 @@ namespace LiveCaptionsTranslator
         {
             try
             {
-                // 取消正在进行的任务
-                cancellationTokenSource?.Cancel();
+                // 取消正在进行的任务并等待循环退出
+                StopCoreLoops();
                 
                 // 清理LiveCaptions
                 if (Translator.Window != null)
@@ -491,17 +491,47 @@ namespace LiveCaptionsTranslator
                 // 忽略关闭过程中的错误
             }
         }
-        
+
+        private void StopCoreLoops()
+        {
+            try
+            {
+                cancellationTokenSource?.Cancel();
+            }
+            catch
+            {
+                // 忽略取消异常
+            }
+
+            try
+            {
+                syncLoopTask?.Wait(1000);
+            }
+            catch
+            {
+                // 忽略等待异常
+            }
+
+            try
+            {
+                translateLoopTask?.Wait(1000);
+            }
+            catch
+            {
+                // 忽略等待异常
+            }
+        }
+
         protected override void OnExit(ExitEventArgs e)
         {
             try
             {
                 // 确保在应用退出时所有资源都被正确释放
                 
-                // 取消所有任务
+                // 取消所有任务并等待循环退出
                 if (cancellationTokenSource != null)
                 {
-                    cancellationTokenSource.Cancel();
+                    StopCoreLoops();
                     cancellationTokenSource.Dispose();
                 }
                 
