@@ -927,52 +927,68 @@ namespace LiveCaptionsTranslator
             {
                 var sw = Setting.MainWindow.LatencyShow ? Stopwatch.StartNew() : null;
                 
-                string translatedText;
                 string sourceLanguage = "auto";
                 string targetLanguage = Setting.TargetLanguage;
                 
-                // 构建上下文文本 (仅对LLM类API)
-                if (IsLLMBasedAPI(apiName) && contextHistory.Count > 1)
-                {
-                    // 为LLM创建带上下文的提示词，使用缓存避免重复构建
-                    string contextPrompt = GetCachedContextPrompt(text, apiName);
-                    translatedText = await TranslateAPI.TranslateWithAPI(contextPrompt, apiName, token).ConfigureAwait(false);
-                }
-                else
-                {
-                    // 对传统API使用普通翻译方法
-                    translatedText = await TranslateAPI.TranslateWithAPI(text, apiName, token).ConfigureAwait(false);
-                }
-                
-                if (sw != null)
-                {
-                    sw.Stop();
-                    translatedText = $"[{sw.ElapsedMilliseconds} ms] " + translatedText;
-                }
+                string inputText = BuildTranslationInput(text, apiName);
+                string translatedText = await TranslateAPI.TranslateWithAPI(inputText, apiName, token).ConfigureAwait(false);
+                string bestTranslation = translatedText;
 
-                // 评估翻译质量 - 使用轻量级评估模式减少CPU使用
-                int qualityScore = TranslationQualityEvaluator.EvaluateQualityLightweight(text, translatedText);
+                // 评估翻译质量 - 使用增强评估模式
+                int qualityScore = TranslationQualityEvaluator.EvaluateQualityEnhanced(text, translatedText);
+                int bestScore = qualityScore;
                 UpdateApiQualityScore(apiName, qualityScore);
                 
                 // 仅对低质量翻译尝试改进
-                if (qualityScore < 70)
+                if (qualityScore < TranslationQualityEvaluator.GoodQualityThreshold)
                 {
                     var (improvedTranslation, apiSuggestion) = TranslationQualityEvaluator.GetImprovedTranslation(
                         translatedText, text, apiName, qualityScore);
                     
                     if (improvedTranslation != translatedText)
                     {
-                        translatedText = improvedTranslation;
+                        int improvedScore = TranslationQualityEvaluator.EvaluateQualityEnhanced(text, improvedTranslation);
+                        if (improvedScore > bestScore)
+                        {
+                            bestTranslation = improvedTranslation;
+                            bestScore = improvedScore;
+                        }
                     }
                     
-                    if (apiSuggestion != apiName)
+                    string? fallbackApi = apiSuggestion != apiName ? apiSuggestion : GetFallbackApi(apiName);
+                    if (!string.IsNullOrEmpty(fallbackApi) && fallbackApi != apiName)
                     {
+                        try
+                        {
+                            string fallbackInput = BuildTranslationInput(text, fallbackApi);
+                            string fallbackTranslation = await TranslateAPI.TranslateWithAPI(fallbackInput, fallbackApi, token)
+                                .ConfigureAwait(false);
+                            int fallbackScore = TranslationQualityEvaluator.EvaluateQualityEnhanced(text, fallbackTranslation);
+                            UpdateApiQualityScore(fallbackApi, fallbackScore);
+
+                            if (fallbackScore > bestScore)
+                            {
+                                bestTranslation = fallbackTranslation;
+                                bestScore = fallbackScore;
+                            }
+                        }
+                        catch
+                        {
+                            // 忽略回退失败
+                        }
+
                         // 记录API建议，但不立即切换，让用户或之后的翻译决定是否采用
-                        lastRecommendedApi = apiSuggestion;
+                        lastRecommendedApi = fallbackApi;
                     }
                 }
                 
-                return translatedText;
+                if (sw != null)
+                {
+                    sw.Stop();
+                    bestTranslation = $"[{sw.ElapsedMilliseconds} ms] " + bestTranslation;
+                }
+
+                return bestTranslation;
             }
             catch (OperationCanceledException)
             {
@@ -1112,6 +1128,32 @@ namespace LiveCaptionsTranslator
         private static bool IsLLMBasedAPI(string apiName)
         {
             return apiName == "OpenAI" || apiName == "Ollama" || apiName == "OpenRouter";
+        }
+
+        private static string BuildTranslationInput(string text, string apiName)
+        {
+            if (IsLLMBasedAPI(apiName) && contextHistory.Count > 1)
+            {
+                return GetCachedContextPrompt(text, apiName);
+            }
+
+            return text;
+        }
+
+        private static string? GetFallbackApi(string apiName)
+        {
+            if (apiName != "Google" && TranslateAPI.TRANSLATE_FUNCTIONS.ContainsKey("Google"))
+                return "Google";
+            if (apiName != "DeepL" && TranslateAPI.TRANSLATE_FUNCTIONS.ContainsKey("DeepL"))
+                return "DeepL";
+            if (apiName != "OpenAI" && TranslateAPI.TRANSLATE_FUNCTIONS.ContainsKey("OpenAI"))
+                return "OpenAI";
+            if (apiName != "OpenRouter" && TranslateAPI.TRANSLATE_FUNCTIONS.ContainsKey("OpenRouter"))
+                return "OpenRouter";
+            if (apiName != "Ollama" && TranslateAPI.TRANSLATE_FUNCTIONS.ContainsKey("Ollama"))
+                return "Ollama";
+
+            return null;
         }
 
         // 更新API质量评分
