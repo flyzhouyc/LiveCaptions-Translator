@@ -50,6 +50,9 @@ namespace LiveCaptionsTranslator.apis
             Timeout = TimeSpan.FromSeconds(8)
         };
         private static int openai_fallback_index = 0;
+        private const string TimeoutFailureMessage =
+            "[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
+            "please use a faster API or check network connection.";
 
         private static async Task<HttpResponseMessage> PostAsync(
             string url, HttpContent content, CancellationToken token, string? authorization = null)
@@ -137,11 +140,12 @@ namespace LiveCaptionsTranslator.apis
                     }
                 }
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -175,7 +179,7 @@ namespace LiveCaptionsTranslator.apis
             var messages = BuildLLMMessages(language, text);
             
             var requestData = LLMRequestDataFactory.Create("Ollama", config.ModelName, messages, config.Temperature);
-            requestData.keep_alive = config.keep_alive;
+            requestData.keep_alive = config.Keep_alive;
             string jsonContent = JsonSerializer.Serialize(requestData, requestData.GetType());
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
@@ -184,11 +188,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await client.PostAsync(apiUrl, content, token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -217,33 +222,15 @@ namespace LiveCaptionsTranslator.apis
 
             string language = LMStudioConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
-            string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl) + "/chat";
-
-            string systemPrompt = string.Format(Prompt, language);
-
-            // Build input with optional context
-            string input = $"🔤 {text} 🔤";
-            if (Translator.Setting.ContextAware)
-            {
-                var contextLines = new List<string>();
-                foreach (var entry in Translator.Caption.AwareContexts)
-                {
-                    string translatedText = entry.TranslatedText;
-                    if (translatedText.Contains("[ERROR]") || translatedText.Contains("[WARNING]"))
-                        continue;
-                    translatedText = RegexPatterns.NoticePrefix().Replace(translatedText, "");
-                    contextLines.Add($"🔤 {entry.SourceText} 🔤 → {translatedText}");
-                }
-                if (contextLines.Count > 0)
-                    input = string.Join("\n", contextLines) + "\n" + input;
-            }
+            string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl) + "/chat/completions";
 
             var requestData = new
             {
                 model = config.ModelName,
-                system_prompt = systemPrompt,
-                input = input,
-                temperature = config.Temperature
+                messages = BuildLLMMessages(language, text),
+                temperature = config.Temperature,
+                max_tokens = 128,
+                stream = false
             };
 
             string jsonContent = JsonSerializer.Serialize(requestData);
@@ -252,13 +239,14 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(apiUrl, content, token);
+                response = await PostAsync(apiUrl, content, token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -272,8 +260,16 @@ namespace LiveCaptionsTranslator.apis
                 using var doc = JsonDocument.Parse(responseString);
                 var root = doc.RootElement;
 
-                // LMStudio native /api/v1/chat response:
-                // { "output": [ { "type": "message", "content": "..." }, ... ] }
+                if (root.TryGetProperty("choices", out var choices) &&
+                    choices.ValueKind == JsonValueKind.Array &&
+                    choices.GetArrayLength() > 0 &&
+                    choices[0].TryGetProperty("message", out var message) &&
+                    message.TryGetProperty("content", out var messageContent))
+                {
+                    return RegexPatterns.ModelThinking().Replace(messageContent.GetString() ?? "", "");
+                }
+
+                // Compatibility fallback for older LMStudio native responses.
                 if (root.TryGetProperty("output", out var outputArray) &&
                     outputArray.ValueKind == JsonValueKind.Array)
                 {
@@ -318,11 +314,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await PostAsync(apiUrl, content, token, $"Bearer {config.ApiKey}");
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -359,11 +356,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await client.GetAsync(url, token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -405,11 +403,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await client.SendAsync(request, token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -459,11 +458,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await PostAsync(apiUrl, content, token, $"DeepL-Auth-Key {config.ApiKey}");
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -519,11 +519,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await client.PostAsync(config.ApiUrl, content, token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -574,11 +575,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await PostAsync(apiUrl, content, token, $"Bearer {config.ApiKey}");
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -626,11 +628,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await client.PostAsync(config.ApiUrl, content, token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)
@@ -682,11 +685,12 @@ namespace LiveCaptionsTranslator.apis
             {
                 response = await client.PostAsync(apiUrl, content, token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
-                if (ex.Message.StartsWith("The request"))
-                    return $"[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
-                           $"please use a faster API or check network connection.";
+                return TimeoutFailureMessage;
+            }
+            catch (OperationCanceledException)
+            {
                 throw;
             }
             catch (Exception ex)

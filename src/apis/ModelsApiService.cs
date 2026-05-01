@@ -83,16 +83,18 @@ namespace LiveCaptionsTranslator.apis
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("models", out var modelsArray))
+                if (!root.TryGetProperty("models", out var modelsArray) &&
+                    !root.TryGetProperty("data", out modelsArray))
                     return result;
 
                 foreach (var model in modelsArray.EnumerateArray())
                 {
                     string? type = model.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
-                    if (type != "llm")
+                    if (type != null && type != "llm")
                         continue;
 
                     string? key = model.TryGetProperty("key", out var keyProp) ? keyProp.GetString() : null;
+                    key ??= model.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
                     if (string.IsNullOrEmpty(key))
                         continue;
 

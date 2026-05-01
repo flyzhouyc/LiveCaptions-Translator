@@ -28,9 +28,7 @@
 			<SubType>Designer</SubType>
 		</ApplicationDefinition>
 		<Content Include="src\LiveCaptions-Translator.ico" />
-		<Compile Remove="src\utils\EnumToIntConverter.cs" />
-		<Compile Remove="src\utils\TranslateAPI.cs" />
-		
+
 		<PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
 		
 		<PackageReference Include="CsvHelper" Version="33.0.1" />

@@ -35,8 +35,12 @@ namespace LiveCaptionsTranslator
             get => onlyMode;
             set
             {
+                if (onlyMode == value)
+                    return;
+
+                var previousMode = onlyMode;
                 onlyMode = value;
-                ResizeForOnlyMode();
+                ResizeForOnlyMode(previousMode, onlyMode);
             }
         }
         public CaptionLocation SwitchMode { get; set; } = CaptionLocation.TranslationTop;
@@ -295,35 +299,39 @@ namespace LiveCaptionsTranslator
             ControlPanel.Visibility = Visibility.Collapsed;
         }
 
-        public void ResizeForOnlyMode()
+        private void ResizeForOnlyMode(CaptionVisible previousMode, CaptionVisible nextMode)
         {
-            if (onlyMode == CaptionVisible.TranslationOnly)
+            if (previousMode == CaptionVisible.TranslationOnly)
             {
-                // (1) Translation Only
+                OriginalCaptionCard.Visibility = Visibility.Visible;
+                this.Top -= StyleConsts.DELTA_OVERLAY_HEIGHT;
+                this.Height += StyleConsts.DELTA_OVERLAY_HEIGHT;
+                this.MinHeight += StyleConsts.DELTA_OVERLAY_HEIGHT;
+            }
+            else if (previousMode == CaptionVisible.SubtitleOnly)
+            {
+                this.Height += StyleConsts.DELTA_OVERLAY_HEIGHT;
+                this.MinHeight += StyleConsts.DELTA_OVERLAY_HEIGHT;
+                TranslatedCaptionCard.Visibility = Visibility.Visible;
+            }
+
+            if (nextMode == CaptionVisible.TranslationOnly)
+            {
                 OriginalCaptionCard.Visibility = Visibility.Collapsed;
                 this.MinHeight -= StyleConsts.DELTA_OVERLAY_HEIGHT;
                 this.Height -= StyleConsts.DELTA_OVERLAY_HEIGHT;
                 this.Top += StyleConsts.DELTA_OVERLAY_HEIGHT;
             }
-            if (onlyMode == CaptionVisible.SubtitleOnly)
+            else if (nextMode == CaptionVisible.SubtitleOnly)
             {
-                // restore
-                OriginalCaptionCard.Visibility = Visibility.Visible;
-                this.Top -= StyleConsts.DELTA_OVERLAY_HEIGHT;
-                this.Height += StyleConsts.DELTA_OVERLAY_HEIGHT;
-                this.MinHeight += StyleConsts.DELTA_OVERLAY_HEIGHT;
-
-                // (2) Subtitle Only
                 TranslatedCaptionCard.Visibility = Visibility.Collapsed;
                 this.MinHeight -= StyleConsts.DELTA_OVERLAY_HEIGHT;
                 this.Height -= StyleConsts.DELTA_OVERLAY_HEIGHT;
             }
-            else if (onlyMode == CaptionVisible.Both)
+            else
             {
-                // restore
+                OriginalCaptionCard.Visibility = Visibility.Visible;
                 TranslatedCaptionCard.Visibility = Visibility.Visible;
-                this.Height += StyleConsts.DELTA_OVERLAY_HEIGHT;
-                this.MinHeight += StyleConsts.DELTA_OVERLAY_HEIGHT;
             }
         }
 

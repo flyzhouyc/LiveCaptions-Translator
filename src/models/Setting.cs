@@ -306,7 +306,14 @@ namespace LiveCaptionsTranslator.models
 
         public void Save()
         {
-            Save(FILENAME);
+            try
+            {
+                Save(FILENAME);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("Failed to save setting file.", ex);
+            }
         }
 
         public void Save(string jsonPath)
