@@ -64,6 +64,8 @@ namespace LiveCaptionsTranslator
         private async void Delete_click(object sender, RoutedEventArgs e)
         {
             var dialogHostContainer = (Application.Current.MainWindow as MainWindow)?.DialogHostContainer;
+            if (dialogHostContainer == null)
+                return;
 
             var dialog = new ContentDialog
             {
@@ -95,7 +97,9 @@ namespace LiveCaptionsTranslator
 
         private async void maxRow_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            string tag = (e.AddedItems[0] as ComboBoxItem).Tag as string;
+            if (e.AddedItems.Count == 0 || e.AddedItems[0] is not ComboBoxItem { Tag: string tag })
+                return;
+
             maxRowPerPage = Convert.ToInt32(tag);
 
             await LoadHistory();
@@ -138,7 +142,7 @@ namespace LiveCaptionsTranslator
 
         private async void HistorySearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
         {
-            string searchText = (sender as AutoSuggestBox)?.Text ?? "";
+            string searchText = sender.Text ?? string.Empty;
 
             // Clear search by Ctrl+A and Delete and Enter
             if (string.IsNullOrEmpty(searchText))
@@ -152,7 +156,7 @@ namespace LiveCaptionsTranslator
                 {
                     searchPage = currentPage;
                 }
-                SearchText = (sender as AutoSuggestBox)?.Text;
+                SearchText = sender.Text ?? string.Empty;
                 currentPage = 1;
             }
             await LoadHistory();

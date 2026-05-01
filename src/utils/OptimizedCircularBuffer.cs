@@ -90,7 +90,7 @@ namespace LiveCaptionsTranslator.utils
         /// <summary>
         /// 重置缓冲区，可选择保留一个元素
         /// </summary>
-        public void Reset(T itemToKeep = default)
+        public void Reset(T? itemToKeep = default)
         {
             Clear();
             if (itemToKeep != null && !itemToKeep.Equals(default(T)))

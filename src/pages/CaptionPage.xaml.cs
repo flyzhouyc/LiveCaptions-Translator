@@ -12,8 +12,8 @@ namespace LiveCaptionsTranslator
     {
         public const int CARD_HEIGHT = 110;
 
-        private static CaptionPage instance;
-        public static CaptionPage Instance => instance;
+        private static CaptionPage? instance;
+        public static CaptionPage? Instance => instance;
 
         public CaptionPage()
         {
@@ -24,16 +24,20 @@ namespace LiveCaptionsTranslator
             Loaded += (s, e) =>
             {
                 AutoHeight();
-                (App.Current.MainWindow as MainWindow).CaptionLogButton.Visibility = Visibility.Visible;
-                Translator.Caption.PropertyChanged += TranslatedChanged;
+                if (App.Current.MainWindow is MainWindow mainWindow)
+                    mainWindow.CaptionLogButton.Visibility = Visibility.Visible;
+                if (Translator.Caption != null)
+                    Translator.Caption.PropertyChanged += TranslatedChanged;
             };
             Unloaded += (s, e) =>
             {
-                (App.Current.MainWindow as MainWindow).CaptionLogButton.Visibility = Visibility.Collapsed;
-                Translator.Caption.PropertyChanged -= TranslatedChanged;
+                if (App.Current.MainWindow is MainWindow mainWindow)
+                    mainWindow.CaptionLogButton.Visibility = Visibility.Collapsed;
+                if (Translator.Caption != null)
+                    Translator.Caption.PropertyChanged -= TranslatedChanged;
             };
 
-            CollapseTranslatedCaption(Translator.Setting.MainWindow.CaptionLogEnabled);
+            CollapseTranslatedCaption(Translator.Setting?.MainWindow.CaptionLogEnabled ?? false);
         }
 
         private async void TextBlock_MouseLeftButtonDown(object sender, RoutedEventArgs e)
@@ -45,19 +49,21 @@ namespace LiveCaptionsTranslator
                     Clipboard.SetText(textBlock.Text);
                     SnackbarHost.Show("Copied.", textBlock.Text, SnackbarType.Info, 100);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    AppLogger.Warning("Failed to copy caption text.", ex);
                     SnackbarHost.Show("Copy Failed.", string.Empty, SnackbarType.Error, 100);
                 }
                 await Task.Delay(500);
             }
         }
 
-        private void TranslatedChanged(object sender, PropertyChangedEventArgs e)
+        private void TranslatedChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(Translator.Caption.DisplayTranslatedCaption))
+            if (e.PropertyName == nameof(models.Caption.DisplayTranslatedCaption))
             {
-                if (Encoding.UTF8.GetByteCount(Translator.Caption.DisplayTranslatedCaption) >= TextUtil.LONG_THRESHOLD)
+                string translatedCaption = Translator.Caption?.DisplayTranslatedCaption ?? string.Empty;
+                if (Encoding.UTF8.GetByteCount(translatedCaption) >= TextUtil.LONG_THRESHOLD)
                 {
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
@@ -76,30 +82,32 @@ namespace LiveCaptionsTranslator
 
         public void CollapseTranslatedCaption(bool isCollapsed)
         {
-            var converter = new GridLengthConverter();
-
             if (isCollapsed)
             {
-                TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("Auto");
+                TranslatedCaption_Row.Height = GridLength.Auto;
                 LogCards.Visibility = Visibility.Visible;
             }
             else
             {
-                TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("*");
+                TranslatedCaption_Row.Height = new GridLength(1, GridUnitType.Star);
                 LogCards.Visibility = Visibility.Collapsed;
             }
         }
 
         public void AutoHeight()
         {
-            if (Translator.Setting.MainWindow.CaptionLogEnabled)
-                (App.Current.MainWindow as MainWindow).AutoHeightAdjust(
-                    minHeight: CARD_HEIGHT * (Translator.Setting.DisplaySentences + 1),
-                    maxHeight: CARD_HEIGHT * (Translator.Setting.DisplaySentences + 1));
+            var setting = Translator.Setting;
+            if (App.Current.MainWindow is not MainWindow mainWindow || setting == null)
+                return;
+
+            if (setting.MainWindow.CaptionLogEnabled)
+                mainWindow.AutoHeightAdjust(
+                    minHeight: CARD_HEIGHT * (setting.DisplaySentences + 1),
+                    maxHeight: CARD_HEIGHT * (setting.DisplaySentences + 1));
             else
-                (App.Current.MainWindow as MainWindow).AutoHeightAdjust(
-                    minHeight: (int)App.Current.MainWindow.MinHeight,
-                    maxHeight: (int)App.Current.MainWindow.MinHeight);
+                mainWindow.AutoHeightAdjust(
+                    minHeight: (int)mainWindow.MinHeight,
+                    maxHeight: (int)mainWindow.MinHeight);
         }
     }
 }

@@ -248,7 +248,8 @@ namespace LiveCaptionsTranslator
         private void OnlyModeButton_Click(object sender, RoutedEventArgs e)
         {
             var button = sender as Button;
-            var symbolIcon = button?.Icon as SymbolIcon;
+            if (button?.Icon is not SymbolIcon symbolIcon)
+                return;
 
             if (onlyMode == CaptionVisible.SubtitleOnly)
             {

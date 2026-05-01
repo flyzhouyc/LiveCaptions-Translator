@@ -22,7 +22,8 @@ namespace LiveCaptionsTranslator
 
             Loaded += (s, e) =>
             {
-                (App.Current.MainWindow as MainWindow)?.AutoHeightAdjust(maxHeight: (int)App.Current.MainWindow.MinHeight);
+                if (App.Current.MainWindow is MainWindow mainWindow)
+                    mainWindow.AutoHeightAdjust(maxHeight: (int)mainWindow.MinHeight);
                 CheckForFirstUse();
             };
 
@@ -60,13 +61,14 @@ namespace LiveCaptionsTranslator
 
         private void TargetLangBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (TargetLangBox.SelectedItem != null)
-                Translator.Setting.TargetLanguage = TargetLangBox.SelectedItem.ToString();
+            if (Translator.Setting != null && TargetLangBox.SelectedItem != null)
+                Translator.Setting.TargetLanguage = TargetLangBox.SelectedItem.ToString() ?? string.Empty;
         }
 
         private void TargetLangBox_LostFocus(object sender, RoutedEventArgs e)
         {
-            Translator.Setting.TargetLanguage = TargetLangBox.Text;
+            if (Translator.Setting != null)
+                Translator.Setting.TargetLanguage = TargetLangBox.Text;
         }
 
         private void APISettingButton_click(object sender, RoutedEventArgs e)
@@ -83,16 +85,18 @@ namespace LiveCaptionsTranslator
 
         private void Contexts_ValueChanged(object sender, NumberBoxValueChangedEventArgs args)
         {
-            if (Translator.Setting.DisplaySentences > Translator.Setting.NumContexts)
-                Translator.Setting.DisplaySentences = Translator.Setting.NumContexts;
+            var setting = Translator.Setting;
+            if (setting != null && setting.DisplaySentences > setting.NumContexts)
+                setting.DisplaySentences = setting.NumContexts;
         }
 
         private void DisplaySentences_ValueChanged(object sender, NumberBoxValueChangedEventArgs args)
         {
-            if (Translator.Setting.DisplaySentences > Translator.Setting.NumContexts)
-                Translator.Setting.NumContexts = Translator.Setting.DisplaySentences;
-            Translator.Caption.OnPropertyChanged("DisplayLogCards");
-            Translator.Caption.OnPropertyChanged("OverlayPreviousTranslation");
+            var setting = Translator.Setting;
+            if (setting != null && setting.DisplaySentences > setting.NumContexts)
+                setting.NumContexts = setting.DisplaySentences;
+            Translator.Caption?.OnPropertyChanged("DisplayLogCards");
+            Translator.Caption?.OnPropertyChanged("OverlayPreviousTranslation");
         }
 
         private void LiveCaptionsInfo_MouseEnter(object sender, MouseEventArgs e)
@@ -163,7 +167,11 @@ namespace LiveCaptionsTranslator
 
         public void LoadAPISetting()
         {
-            var configType = Translator.Setting[Translator.Setting.ApiName].GetType();
+            var setting = Translator.Setting;
+            if (setting == null)
+                return;
+
+            var configType = setting[setting.ApiName].GetType();
             var languagesProp = configType.GetProperty(
                 "SupportedLanguages", BindingFlags.Public | BindingFlags.Static);
 
@@ -171,17 +179,19 @@ namespace LiveCaptionsTranslator
             while (configType != null && languagesProp == null)
             {
                 configType = configType.BaseType;
-                languagesProp = configType.GetProperty(
+                languagesProp = configType?.GetProperty(
                     "SupportedLanguages", BindingFlags.Public | BindingFlags.Static);
             }
             if (languagesProp == null)
                 languagesProp = typeof(TranslateAPIConfig).GetProperty(
                     "SupportedLanguages", BindingFlags.Public | BindingFlags.Static);
 
-            var supportedLanguages = (Dictionary<string, string>)languagesProp.GetValue(null);
+            if (languagesProp?.GetValue(null) is not Dictionary<string, string> supportedLanguages)
+                return;
+
             TargetLangBox.ItemsSource = supportedLanguages.Keys;
 
-            string targetLang = Translator.Setting.TargetLanguage;
+            string targetLang = setting.TargetLanguage;
             if (!supportedLanguages.ContainsKey(targetLang))
                 supportedLanguages[targetLang] = targetLang;    // add custom language to supported languages
             TargetLangBox.SelectedItem = targetLang;

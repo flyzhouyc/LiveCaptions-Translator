@@ -12,22 +12,23 @@ namespace LiveCaptionsTranslator
     public static class Translator
     {
         private static AutomationElement? window = null;
-        private static Caption? caption = null;
-        private static Setting? setting = null;
+        private static Caption caption = null!;
+        private static Setting setting = null!;
 
         private static readonly Queue<string> pendingTextQueue = new();
         private static readonly object pendingTextLock = new();
         private static readonly TranslationTaskQueue translationTaskQueue = new();
         private static readonly TimeSpan OverlayCaptionUpdateInterval = TimeSpan.FromMilliseconds(220);
         private static readonly TimeSpan PartialTranslationInterval = TimeSpan.FromMilliseconds(650);
+        private const int MaxPendingTextQueueLength = 8;
 
         public static AutomationElement? Window
         {
             get => window;
             set => window = value;
         }
-        public static Caption? Caption => caption;
-        public static Setting? Setting => setting;
+        public static Caption Caption => caption;
+        public static Setting Setting => setting;
 
         public static bool LogOnlyFlag { get; set; } = false;
         public static bool FirstUseFlag { get; set; } = false;
@@ -37,13 +38,20 @@ namespace LiveCaptionsTranslator
         static Translator()
         {
             window = LiveCaptionsHandler.LaunchLiveCaptions();
-            LiveCaptionsHandler.FixLiveCaptions(Window);
-            LiveCaptionsHandler.HideLiveCaptions(Window);
+            if (window != null)
+            {
+                LiveCaptionsHandler.FixLiveCaptions(window);
+                LiveCaptionsHandler.HideLiveCaptions(window);
+            }
+            else
+            {
+                AppLogger.Warning("LiveCaptions window was not found during startup.");
+            }
 
             if (!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), models.Setting.FILENAME)))
                 FirstUseFlag = true;
 
-            caption = Caption.GetInstance();
+            caption = models.Caption.GetInstance();
             setting = Setting.Load();
         }
 
@@ -93,7 +101,7 @@ namespace LiveCaptionsTranslator
 
                 // Prevent adding the last sentence from previous running to log cards
                 // before the first sentence is completed.
-                if (fullText.IndexOfAny(TextUtil.PUNC_EOS) == -1 && Caption.Contexts.Count > 0)
+                if (fullText.IndexOfAny(TextUtil.PUNC_EOS) == -1 && Caption.HasContexts)
                     ClearContexts();
 
                 // Get the last sentence.
@@ -200,7 +208,7 @@ namespace LiveCaptionsTranslator
             }
         }
 
-        public static async Task DisplayLoop()
+        public static void DisplayLoop()
         {
             while (true)
             {
@@ -242,10 +250,10 @@ namespace LiveCaptionsTranslator
 
         private static string BuildOverlayOriginalCaption(string fullText, string latestCaption, int lastEOSIndex)
         {
-            if (lastEOSIndex <= 0 || Setting == null || Caption == null || Caption.Contexts.Count == 0)
+            if (lastEOSIndex <= 0 || Setting == null || Caption == null || !Caption.HasContexts)
                 return latestCaption;
 
-            int displaySentences = Math.Min(Setting.DisplaySentences, Caption.Contexts.Count);
+            int displaySentences = Math.Min(Setting.DisplaySentences, Caption.ContextCount);
             if (displaySentences <= 0)
                 return latestCaption;
 
@@ -275,6 +283,15 @@ namespace LiveCaptionsTranslator
             {
                 if (pendingTextQueue.Count > 0 && string.CompareOrdinal(pendingTextQueue.Last(), text) == 0)
                     return;
+
+                int droppedCount = 0;
+                while (pendingTextQueue.Count >= MaxPendingTextQueueLength)
+                {
+                    pendingTextQueue.Dequeue();
+                    droppedCount++;
+                }
+                if (droppedCount > 0)
+                    AppLogger.Warning($"Dropped {droppedCount} stale pending caption item(s).");
 
                 pendingTextQueue.Enqueue(text);
             }
@@ -327,7 +344,7 @@ namespace LiveCaptionsTranslator
                     translatedText = $"[{sw.ElapsedMilliseconds,4} ms] " + translatedText;
                 }
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException)
             {
                 throw;
             }
@@ -397,9 +414,7 @@ namespace LiveCaptionsTranslator
             if (lastLog == null)
                 return;
 
-            if (Caption?.Contexts.Count >= Caption.MAX_CONTEXTS)
-                Caption.Contexts.Dequeue();
-            Caption?.Contexts.Enqueue(lastLog);
+            Caption?.AddContext(lastLog);
 
             Caption?.OnPropertyChanged("DisplayLogCards");
             Caption?.OnPropertyChanged("OverlayPreviousTranslation");
@@ -407,7 +422,7 @@ namespace LiveCaptionsTranslator
 
         public static void ClearContexts()
         {
-            Caption?.Contexts.Clear();
+            Caption?.ClearContexts();
 
             Caption?.OnPropertyChanged("DisplayLogCards");
             Caption?.OnPropertyChanged("OverlayPreviousTranslation");

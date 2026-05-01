@@ -15,7 +15,7 @@ namespace LiveCaptionsTranslator.utils
         // 对象工厂函数
         private readonly Func<T> _objectGenerator;
         // 对象重置函数
-        private readonly Action<T> _objectReset;
+        private readonly Action<T>? _objectReset;
         // 最大池大小
         private readonly int _maxSize;
         // 当前池大小计数器
@@ -27,7 +27,7 @@ namespace LiveCaptionsTranslator.utils
         /// <param name="objectGenerator">创建新对象的工厂函数</param>
         /// <param name="objectReset">重置对象状态的函数</param>
         /// <param name="maxSize">池的最大大小，超过此大小的对象将被丢弃</param>
-        public ObjectPool(Func<T> objectGenerator, Action<T> objectReset = null, int maxSize = 50)
+        public ObjectPool(Func<T> objectGenerator, Action<T>? objectReset = null, int maxSize = 50)
         {
             _objects = new ConcurrentBag<T>();
             _objectGenerator = objectGenerator ?? throw new ArgumentNullException(nameof(objectGenerator));
@@ -41,7 +41,7 @@ namespace LiveCaptionsTranslator.utils
         /// </summary>
         public T Get()
         {
-            if (_objects.TryTake(out T item))
+            if (_objects.TryTake(out T? item))
             {
                 return item;
             }

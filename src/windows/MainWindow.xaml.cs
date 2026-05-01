@@ -26,7 +26,7 @@ namespace LiveCaptionsTranslator
                 RootNavigation.Navigate(typeof(CaptionPage));
                 IsAutoHeight = true;
                 CheckForFirstUse();
-                CheckForUpdates();
+                _ = CheckForUpdates();
             };
 
             double screenWidth = SystemParameters.PrimaryScreenWidth;
@@ -54,33 +54,35 @@ namespace LiveCaptionsTranslator
         private void OverlayModeButton_Click(object sender, RoutedEventArgs e)
         {
             var button = sender as Button;
-            var symbolIcon = button?.Icon as SymbolIcon;
+            if (button?.Icon is not SymbolIcon symbolIcon)
+                return;
 
             if (OverlayWindow == null)
             {
                 symbolIcon.Symbol = SymbolRegular.ClosedCaption24;
                 symbolIcon.Filled = true;
 
-                OverlayWindow = new OverlayWindow();
-                OverlayWindow.SizeChanged +=
-                    (s, e) => WindowHandler.SaveState(OverlayWindow, Translator.Setting);
-                OverlayWindow.LocationChanged +=
-                    (s, e) => WindowHandler.SaveState(OverlayWindow, Translator.Setting);
+                var overlayWindow = new OverlayWindow();
+                overlayWindow.SizeChanged +=
+                    (s, e) => WindowHandler.SaveState(overlayWindow, Translator.Setting);
+                overlayWindow.LocationChanged +=
+                    (s, e) => WindowHandler.SaveState(overlayWindow, Translator.Setting);
+                OverlayWindow = overlayWindow;
 
                 double screenWidth = SystemParameters.PrimaryScreenWidth;
                 double screenHeight = SystemParameters.PrimaryScreenHeight;
 
-                var windowState = WindowHandler.LoadState(OverlayWindow, Translator.Setting);
+                var windowState = WindowHandler.LoadState(overlayWindow, Translator.Setting);
                 if (windowState.Left <= 0 || windowState.Left >= screenWidth ||
                     windowState.Top <= 0 || windowState.Top >= screenHeight)
                 {
-                    WindowHandler.RestoreState(OverlayWindow, new Rect(
+                    WindowHandler.RestoreState(overlayWindow, new Rect(
                         (screenWidth - 650) / 2, screenHeight * 5 / 6 - 135, 650, 135));
                 }
                 else
-                    WindowHandler.RestoreState(OverlayWindow, windowState);
+                    WindowHandler.RestoreState(overlayWindow, windowState);
 
-                OverlayWindow.Show();
+                overlayWindow.Show();
             }
             else
             {
@@ -106,7 +108,8 @@ namespace LiveCaptionsTranslator
         private void LogOnlyButton_Click(object sender, RoutedEventArgs e)
         {
             var button = sender as Button;
-            var symbolIcon = button?.Icon as SymbolIcon;
+            if (button?.Icon is not SymbolIcon symbolIcon)
+                return;
 
             if (Translator.LogOnlyFlag)
             {
@@ -132,7 +135,8 @@ namespace LiveCaptionsTranslator
         private void MainWindow_LocationChanged(object sender, EventArgs e)
         {
             var window = sender as Window;
-            WindowHandler.SaveState(window, Translator.Setting);
+            if (window != null)
+                WindowHandler.SaveState(window, Translator.Setting);
         }
 
         private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -144,8 +148,8 @@ namespace LiveCaptionsTranslator
         public void ToggleTopmost(bool enabled)
         {
             var button = TopmostButton as Button;
-            var symbolIcon = button?.Icon as SymbolIcon;
-            symbolIcon.Filled = enabled;
+            if (button?.Icon is SymbolIcon symbolIcon)
+                symbolIcon.Filled = enabled;
             this.Topmost = enabled;
             Translator.Setting.MainWindow.Topmost = enabled;
         }
@@ -156,7 +160,8 @@ namespace LiveCaptionsTranslator
                 return;
 
             RootNavigation.Navigate(typeof(SettingPage));
-            LiveCaptionsHandler.RestoreLiveCaptions(Translator.Window);
+            if (Translator.Window != null)
+                LiveCaptionsHandler.RestoreLiveCaptions(Translator.Window);
 
             Dispatcher.InvokeAsync(() =>
             {

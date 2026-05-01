@@ -226,7 +226,7 @@ namespace LiveCaptionsTranslator
             descriptor?.RemoveValueChanged(obj, OnTextBlockPropertyChanged);
         }
 
-        private void OnTextBlockPropertyChanged(object sender, EventArgs e)
+        private void OnTextBlockPropertyChanged(object? sender, EventArgs e)
         {
             InvalidateVisual();
         }

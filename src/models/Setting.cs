@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Windows;
 
 using LiveCaptionsTranslator.apis;
+using LiveCaptionsTranslator.utils;
 
 namespace LiveCaptionsTranslator.models
 {
@@ -156,10 +157,20 @@ namespace LiveCaptionsTranslator.models
             }
         }
 
-        public TranslateAPIConfig this[string key] =>
-            configs.ContainsKey(key) && configIndices.ContainsKey(key)
-                ? configs[key][configIndices[key]]
-                : new TranslateAPIConfig();
+        public TranslateAPIConfig this[string key]
+        {
+            get
+            {
+                if (!configs.TryGetValue(key, out var configList))
+                    throw new KeyNotFoundException($"Missing API config: {key}");
+                if (!configIndices.TryGetValue(key, out int index))
+                    throw new KeyNotFoundException($"Missing API config index: {key}");
+                if (index < 0 || index >= configList.Count)
+                    throw new IndexOutOfRangeException($"API config index out of range: {key}[{index}]");
+
+                return configList[index];
+            }
+        }
 
         public Setting()
         {
@@ -225,11 +236,21 @@ namespace LiveCaptionsTranslator.models
             {
                 return Load(jsonPath);
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
                 string backupPath = jsonPath + ".bak";
-                File.Move(jsonPath, backupPath);
-                return Load(jsonPath);
+                try
+                {
+                    if (File.Exists(jsonPath))
+                        File.Move(jsonPath, backupPath, true);
+                    AppLogger.Warning($"Invalid setting file was moved to {backupPath}.", ex);
+                }
+                catch (Exception backupException)
+                {
+                    AppLogger.Warning("Failed to back up invalid setting file.", backupException);
+                }
+
+                return new Setting();
             }
         }
 
@@ -256,11 +277,14 @@ namespace LiveCaptionsTranslator.models
             // Ensure all required API configs are present
             foreach (string key in TranslateAPI.TRANSLATE_FUNCTIONS.Keys)
             {
-                if (setting.Configs.ContainsKey(key))
+                if (setting.Configs.TryGetValue(key, out var existingConfigs) && existingConfigs.Count > 0)
                     continue;
+
                 var configType = Type.GetType($"LiveCaptionsTranslator.models.{key}Config");
-                if (configType != null && typeof(TranslateAPIConfig).IsAssignableFrom(configType))
-                    setting.Configs[key] = [(TranslateAPIConfig)Activator.CreateInstance(configType)];
+                if (configType != null &&
+                    typeof(TranslateAPIConfig).IsAssignableFrom(configType) &&
+                    Activator.CreateInstance(configType) is TranslateAPIConfig config)
+                    setting.Configs[key] = [config];
                 else
                     setting.Configs[key] = [new TranslateAPIConfig()];
             }
@@ -268,9 +292,14 @@ namespace LiveCaptionsTranslator.models
             // Ensure ConfigIndices has all keys (for upgrades from older setting.json)
             foreach (string key in TranslateAPI.TRANSLATE_FUNCTIONS.Keys)
             {
-                if (!setting.ConfigIndices.ContainsKey(key))
+                if (!setting.ConfigIndices.TryGetValue(key, out int index) ||
+                    index < 0 ||
+                    index >= setting.Configs[key].Count)
                     setting.ConfigIndices[key] = 0;
             }
+
+            if (!TranslateAPI.TRANSLATE_FUNCTIONS.ContainsKey(setting.apiName))
+                setting.apiName = "Google";
 
             return setting;
         }

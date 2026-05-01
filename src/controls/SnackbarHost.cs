@@ -5,7 +5,7 @@ namespace LiveCaptionsTranslator
     class SnackbarHost
     {
         public static Snackbar? mainSnackbar;
-        public static MainWindow? mainWindow = (MainWindow)App.Current.MainWindow;
+        public static MainWindow? mainWindow = App.Current?.MainWindow as MainWindow;
 
         public static void Show(string title = "", string message = "", SnackbarType type = SnackbarType.Info,
                                 int width = 500, int timeout = 1, bool closeButton = false)
@@ -34,7 +34,11 @@ namespace LiveCaptionsTranslator
                     break;
             }
 
-            mainSnackbar ??= new Snackbar(mainWindow?.snackbarHost);
+            mainWindow ??= App.Current?.MainWindow as MainWindow;
+            if (mainWindow?.snackbarHost == null)
+                return;
+
+            mainSnackbar ??= new Snackbar(mainWindow.snackbarHost);
             snackbar = mainSnackbar;
 
             snackbar.SetCurrentValue(Snackbar.TitleProperty, title);

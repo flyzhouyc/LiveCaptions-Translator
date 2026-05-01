@@ -43,8 +43,8 @@ namespace LiveCaptionsTranslator.models
     {
         public class Message
         {
-            public string role { get; set; }
-            public string content { get; set; }
+            public string role { get; set; } = string.Empty;
+            public string content { get; set; } = string.Empty;
         }
 
         private string modelName = "";
@@ -74,9 +74,9 @@ namespace LiveCaptionsTranslator.models
     {
         public class Response
         {
-            public string model { get; set; }
+            public string model { get; set; } = string.Empty;
             public DateTime created_at { get; set; }
-            public Message message { get; set; }
+            public Message message { get; set; } = new();
             public bool done { get; set; }
             public long total_duration { get; set; }
             public int load_duration { get; set; }
@@ -115,9 +115,9 @@ namespace LiveCaptionsTranslator.models
         public class Choice
         {
             public int index { get; set; }
-            public Message message { get; set; }
-            public string logprobs { get; set; }
-            public string finish_reason { get; set; }
+            public Message message { get; set; } = new();
+            public string logprobs { get; set; } = string.Empty;
+            public string finish_reason { get; set; } = string.Empty;
         }
         public class Usage
         {
@@ -129,13 +129,13 @@ namespace LiveCaptionsTranslator.models
         }
         public class Response
         {
-            public string id { get; set; }
-            public string @object { get; set; }
+            public string id { get; set; } = string.Empty;
+            public string @object { get; set; } = string.Empty;
             public int created { get; set; }
-            public string model { get; set; }
-            public List<Choice> choices { get; set; }
-            public Usage usage { get; set; }
-            public string system_fingerprint { get; set; }
+            public string model { get; set; } = string.Empty;
+            public List<Choice> choices { get; set; } = [];
+            public Usage usage { get; set; } = new();
+            public string system_fingerprint { get; set; } = string.Empty;
         }
 
         private string apiKey = "";
@@ -179,8 +179,8 @@ namespace LiveCaptionsTranslator.models
     {
         public class Response
         {
-            public string model { get; set; }
-            public string output { get; set; }
+            public string model { get; set; } = string.Empty;
+            public string output { get; set; } = string.Empty;
         }
 
         private string apiUrl = "http://localhost:1234/api/v1";
@@ -242,12 +242,12 @@ namespace LiveCaptionsTranslator.models
     {
         public class TranslationResult
         {
-            public string errorCode { get; set; }
-            public string query { get; set; }
-            public List<string> translation { get; set; }
-            public string l { get; set; }
-            public string tSpeakUrl { get; set; }
-            public string speakUrl { get; set; }
+            public string errorCode { get; set; } = string.Empty;
+            public string query { get; set; } = string.Empty;
+            public List<string> translation { get; set; } = [];
+            public string l { get; set; } = string.Empty;
+            public string tSpeakUrl { get; set; } = string.Empty;
+            public string speakUrl { get; set; } = string.Empty;
         }
 
         [JsonIgnore]
@@ -358,7 +358,7 @@ namespace LiveCaptionsTranslator.models
 
         public class Response
         {
-            public string result { get; set; }
+            public string result { get; set; } = string.Empty;
         }
     }
 
@@ -366,16 +366,16 @@ namespace LiveCaptionsTranslator.models
     {
         public class TransResult
         {
-            public string src { get; set; }
-            public string dst { get; set; }
+            public string src { get; set; } = string.Empty;
+            public string dst { get; set; } = string.Empty;
         }
 
         public class TranslationResult
         {
-            public string error_code { get; set; }
-            public string from { get; set; }
-            public string to { get; set; }
-            public List<TransResult> trans_result { get; set; }
+            public string error_code { get; set; } = string.Empty;
+            public string from { get; set; } = string.Empty;
+            public string to { get; set; } = string.Empty;
+            public List<TransResult> trans_result { get; set; } = [];
         }
 
         [JsonIgnore]
@@ -475,7 +475,7 @@ namespace LiveCaptionsTranslator.models
 
         public class Response
         {
-            public string translatedText { get; set; }
+            public string translatedText { get; set; } = string.Empty;
         }
     }
 }

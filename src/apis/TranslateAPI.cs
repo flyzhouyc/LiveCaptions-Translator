@@ -51,6 +51,32 @@ namespace LiveCaptionsTranslator.apis
         };
         private static int openai_fallback_index = 0;
 
+        private static async Task<HttpResponseMessage> PostAsync(
+            string url, HttpContent content, CancellationToken token, string? authorization = null)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = content
+            };
+
+            if (!string.IsNullOrWhiteSpace(authorization))
+                request.Headers.TryAddWithoutValidation("Authorization", authorization);
+
+            return await client.SendAsync(request, token);
+        }
+
+        private static bool TryGetConfig<T>(string apiName, out T config) where T : TranslateAPIConfig
+        {
+            if (Translator.Setting[apiName] is T typedConfig)
+            {
+                config = typedConfig;
+                return true;
+            }
+
+            config = null!;
+            return false;
+        }
+
         private static List<BaseLLMConfig.Message> BuildLLMMessages(string language, string text)
         {
             var messages = new List<BaseLLMConfig.Message>
@@ -78,14 +104,13 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> OpenAI(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["OpenAI"] as OpenAIConfig;
+            if (!TryGetConfig("OpenAI", out OpenAIConfig config))
+                return "[ERROR] Translation Failed: Invalid OpenAI config";
+
             string language = OpenAIConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
 
             var messages = BuildLLMMessages(language, text);
-
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.ApiKey}");
 
             HttpResponseMessage response;
             try
@@ -97,7 +122,8 @@ namespace LiveCaptionsTranslator.apis
                     string jsonContent = JsonSerializer.Serialize(requestData, requestData.GetType());
                     var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                    response = await client.PostAsync(TextUtil.NormalizeUrl(config.ApiUrl), content, token);
+                    response = await PostAsync(TextUtil.NormalizeUrl(config.ApiUrl), content, token,
+                        $"Bearer {config.ApiKey}");
                     if (response.StatusCode != HttpStatusCode.BadRequest &&
                         response.StatusCode != HttpStatusCode.UnprocessableEntity)
                         break;
@@ -127,7 +153,10 @@ namespace LiveCaptionsTranslator.apis
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonSerializer.Deserialize<OpenAIConfig.Response>(responseString);
-                var output = responseObj.choices[0].message.content;
+                var output = responseObj?.choices.FirstOrDefault()?.message.content;
+                if (string.IsNullOrEmpty(output))
+                    return "[ERROR] Translation Failed: Unexpected response format";
+
                 return RegexPatterns.ModelThinking().Replace(output, "");
             }
             else
@@ -136,7 +165,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> Ollama(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["Ollama"] as OllamaConfig;
+            if (!TryGetConfig("Ollama", out OllamaConfig config))
+                return "[ERROR] Translation Failed: Invalid Ollama config";
+
             string language = OllamaConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl + "/api/chat");
@@ -147,7 +178,6 @@ namespace LiveCaptionsTranslator.apis
             requestData.keep_alive = config.keep_alive;
             string jsonContent = JsonSerializer.Serialize(requestData, requestData.GetType());
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-            client.DefaultRequestHeaders.Clear();
 
             HttpResponseMessage response;
             try
@@ -170,7 +200,10 @@ namespace LiveCaptionsTranslator.apis
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonSerializer.Deserialize<OllamaConfig.Response>(responseString);
-                var output = responseObj.message.content;
+                var output = responseObj?.message.content;
+                if (string.IsNullOrEmpty(output))
+                    return "[ERROR] Translation Failed: Unexpected response format";
+
                 return RegexPatterns.ModelThinking().Replace(output, "");
             }
             else
@@ -179,7 +212,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> LMStudio(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["LMStudio"] as LMStudioConfig;
+            if (!TryGetConfig("LMStudio", out LMStudioConfig config))
+                return "[ERROR] Translation Failed: Invalid LMStudio config";
+
             string language = LMStudioConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl) + "/chat";
@@ -213,7 +248,6 @@ namespace LiveCaptionsTranslator.apis
 
             string jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-            client.DefaultRequestHeaders.Clear();
 
             HttpResponseMessage response;
             try
@@ -265,7 +299,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> OpenRouter(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["OpenRouter"] as OpenRouterConfig;
+            if (!TryGetConfig("OpenRouter", out OpenRouterConfig config))
+                return "[ERROR] Translation Failed: Invalid OpenRouter config";
+
             string language = OpenRouterConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string apiUrl = "https://openrouter.ai/api/v1/chat/completions";
@@ -276,13 +312,11 @@ namespace LiveCaptionsTranslator.apis
 
             string jsonContent = JsonSerializer.Serialize(requestData, requestData.GetType());
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config?.ApiKey}");
 
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(apiUrl, content, token);
+                response = await PostAsync(apiUrl, content, token, $"Bearer {config.ApiKey}");
             }
             catch (OperationCanceledException ex)
             {
@@ -312,7 +346,7 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> Google(string text, CancellationToken token = default)
         {
-            var language = Translator.Setting?.TargetLanguage;
+            var language = Translator.Setting.TargetLanguage;
 
             string encodedText = Uri.EscapeDataString(text);
             var url = $"https://clients5.google.com/translate_a/t?" +
@@ -343,8 +377,8 @@ namespace LiveCaptionsTranslator.apis
 
                 var responseObj = JsonSerializer.Deserialize<List<List<string>>>(responseString);
 
-                string translatedText = responseObj[0][0];
-                return translatedText;
+                return responseObj?.FirstOrDefault()?.FirstOrDefault() ??
+                       "[ERROR] Translation Failed: Unexpected API response format";
             }
             else
                 return $"[ERROR] Translation Failed: HTTP Error - {response.StatusCode}";
@@ -353,7 +387,7 @@ namespace LiveCaptionsTranslator.apis
         public static async Task<string> Google2(string text, CancellationToken token = default)
         {
             string apiKey = "AIzaSyA6EEtrDCfBkHV8uU2lgGY-N383ZgAOo7Y";
-            var language = Translator.Setting?.TargetLanguage;
+            var language = Translator.Setting.TargetLanguage;
             string strategy = "2";
 
             string encodedText = Uri.EscapeDataString(text);
@@ -392,8 +426,8 @@ namespace LiveCaptionsTranslator.apis
 
                 if (root.TryGetProperty("translateResponse", out JsonElement translateResponse))
                 {
-                    string translatedText = translateResponse.GetProperty("translateText").GetString();
-                    return translatedText;
+                    return translateResponse.GetProperty("translateText").GetString() ??
+                           "[ERROR] Translation Failed: Unexpected API response format";
                 }
                 else
                     return "[ERROR] Translation Failed: Unexpected API response format";
@@ -404,7 +438,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> DeepL(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["DeepL"] as DeepLConfig;
+            if (!TryGetConfig("DeepL", out DeepLConfig config))
+                return "[ERROR] Translation Failed: Invalid DeepL config";
+
             string language = DeepLConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl);
@@ -418,13 +454,10 @@ namespace LiveCaptionsTranslator.apis
             string jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("Authorization", $"DeepL-Auth-Key {config?.ApiKey}");
-
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(apiUrl, content, token);
+                response = await PostAsync(apiUrl, content, token, $"DeepL-Auth-Key {config.ApiKey}");
             }
             catch (OperationCanceledException ex)
             {
@@ -446,7 +479,8 @@ namespace LiveCaptionsTranslator.apis
                 if (doc.RootElement.TryGetProperty("translations", out var translations) &&
                     translations.ValueKind == JsonValueKind.Array && translations.GetArrayLength() > 0)
                 {
-                    return translations[0].GetProperty("text").GetString();
+                    return translations[0].GetProperty("text").GetString() ??
+                           "[ERROR] Translation Failed: No valid feedback";
                 }
                 return "[ERROR] Translation Failed: No valid feedback";
             }
@@ -457,7 +491,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> Youdao(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["Youdao"] as YoudaoConfig;
+            if (!TryGetConfig("Youdao", out YoudaoConfig config))
+                return "[ERROR] Translation Failed: Invalid Youdao config";
+
             string language = YoudaoConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
 
@@ -477,7 +513,6 @@ namespace LiveCaptionsTranslator.apis
             };
 
             var content = new FormUrlEncodedContent(parameters);
-            client.DefaultRequestHeaders.Clear();
 
             HttpResponseMessage response;
             try
@@ -500,6 +535,8 @@ namespace LiveCaptionsTranslator.apis
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonSerializer.Deserialize<YoudaoConfig.TranslationResult>(responseString);
+                if (responseObj == null)
+                    return "[ERROR] Translation Failed: Unexpected response format";
 
                 if (responseObj.errorCode != "0")
                     return $"[ERROR] Translation Failed: Youdao Error - {responseObj.errorCode}";
@@ -514,7 +551,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> MTranServer(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["MTranServer"] as MTranServerConfig;
+            if (!TryGetConfig("MTranServer", out MTranServerConfig config))
+                return "[ERROR] Translation Failed: Invalid MTranServer config";
+
             string targetLanguage = MTranServerConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string sourceLanguage = config.SourceLanguage;
@@ -530,13 +569,10 @@ namespace LiveCaptionsTranslator.apis
             string jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config?.ApiKey}");
-
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(apiUrl, content, token);
+                response = await PostAsync(apiUrl, content, token, $"Bearer {config.ApiKey}");
             }
             catch (OperationCanceledException ex)
             {
@@ -554,7 +590,7 @@ namespace LiveCaptionsTranslator.apis
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonSerializer.Deserialize<MTranServerConfig.Response>(responseString);
-                return responseObj.result;
+                return responseObj?.result ?? "[ERROR] Translation Failed: Unexpected response format";
             }
             else
                 return $"[ERROR] Translation Failed: HTTP Error - {response.StatusCode}";
@@ -562,7 +598,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> Baidu(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["Baidu"] as BaiduConfig;
+            if (!TryGetConfig("Baidu", out BaiduConfig config))
+                return "[ERROR] Translation Failed: Invalid Baidu config";
+
             string language = BaiduConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
 
@@ -582,7 +620,6 @@ namespace LiveCaptionsTranslator.apis
             };
 
             var content = new FormUrlEncodedContent(parameters);
-            client.DefaultRequestHeaders.Clear();
 
             HttpResponseMessage response;
             try
@@ -605,6 +642,8 @@ namespace LiveCaptionsTranslator.apis
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonSerializer.Deserialize<BaiduConfig.TranslationResult>(responseString);
+                if (responseObj == null)
+                    return "[ERROR] Translation Failed: Unexpected response format";
 
                 if (responseObj.error_code is not null && responseObj.error_code != "0")
                     return $"[ERROR] Translation Failed: Baidu Error - {responseObj.error_code}";
@@ -619,7 +658,9 @@ namespace LiveCaptionsTranslator.apis
 
         public static async Task<string> LibreTranslate(string text, CancellationToken token = default)
         {
-            var config = Translator.Setting["LibreTranslate"] as LibreTranslateConfig;
+            if (!TryGetConfig("LibreTranslate", out LibreTranslateConfig config))
+                return "[ERROR] Translation Failed: Invalid LibreTranslate config";
+
             string targetLanguage = LibreTranslateConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl);
@@ -630,13 +671,11 @@ namespace LiveCaptionsTranslator.apis
                 target = targetLanguage,
                 source = "auto",
                 format = "text",
-                api_key = config?.ApiKey
+                api_key = config.ApiKey
             };
 
             string jsonContent = JsonSerializer.Serialize(requestData);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
-            client.DefaultRequestHeaders.Clear();
 
             HttpResponseMessage response;
             try
@@ -659,7 +698,7 @@ namespace LiveCaptionsTranslator.apis
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonSerializer.Deserialize<LibreTranslateConfig.Response>(responseString);
-                return responseObj.translatedText;
+                return responseObj?.translatedText ?? "[ERROR] Translation Failed: Unexpected response format";
             }
             else
                 return $"[ERROR] Translation Failed: HTTP Error - {response.StatusCode}";
@@ -678,7 +717,10 @@ namespace LiveCaptionsTranslator.apis
             reader.Read();
             while (reader.TokenType == JsonTokenType.PropertyName)
             {
-                string key = reader.GetString();
+                string? key = reader.GetString();
+                if (string.IsNullOrEmpty(key))
+                    throw new JsonException("Expected a non-empty property name.");
+
                 reader.Read();
 
                 var configType = Type.GetType($"LiveCaptionsTranslator.models.{key}Config");
@@ -692,9 +734,11 @@ namespace LiveCaptionsTranslator.apis
                     while (reader.TokenType != JsonTokenType.EndArray)
                     {
                         if (configType != null && typeof(TranslateAPIConfig).IsAssignableFrom(configType))
-                            config = (TranslateAPIConfig)JsonSerializer.Deserialize(ref reader, configType, options);
+                            config = JsonSerializer.Deserialize(ref reader, configType, options) as TranslateAPIConfig
+                                     ?? new TranslateAPIConfig();
                         else
-                            config = (TranslateAPIConfig)JsonSerializer.Deserialize(ref reader, typeof(TranslateAPIConfig), options);
+                            config = JsonSerializer.Deserialize<TranslateAPIConfig>(ref reader, options)
+                                     ?? new TranslateAPIConfig();
 
                         list.Add(config);
                         reader.Read();

@@ -15,8 +15,8 @@ namespace LiveCaptionsTranslator
 {
     public partial class SettingWindow : FluentWindow
     {
-        private System.Windows.Controls.Button currentSelected;
-        private Dictionary<string, FrameworkElement> sectionReferences;
+        private System.Windows.Controls.Button? currentSelected;
+        private Dictionary<string, FrameworkElement> sectionReferences = new();
 
         public SettingWindow()
         {
@@ -43,21 +43,26 @@ namespace LiveCaptionsTranslator
             foreach (var apiName in TranslateAPI.TRANSLATE_FUNCTIONS.Keys.Where(apiName =>
                          !TranslateAPI.NO_CONFIG_APIS.Contains(apiName)))
             {
-                sectionReferences[apiName] = FindName($"{apiName}Section") as StackPanel;
-                SwitchConfig(apiName, Translator.Setting.ConfigIndices[apiName]);
+                if (FindName($"{apiName}Section") is FrameworkElement section)
+                    sectionReferences[apiName] = section;
+                if (Translator.Setting.ConfigIndices.TryGetValue(apiName, out int configIndex))
+                    SwitchConfig(apiName, configIndex);
             }
         }
 
         private void NewButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button)
+            if (sender is Button { Tag: string apiName })
             {
-                string apiName = button.Tag as string;
-                var configs = Translator.Setting.Configs[apiName];
-                var configIndex = Translator.Setting.ConfigIndices[apiName];
+                if (!Translator.Setting.Configs.TryGetValue(apiName, out var configs) ||
+                    !Translator.Setting.ConfigIndices.TryGetValue(apiName, out int configIndex))
+                    return;
 
                 var type = Type.GetType($"LiveCaptionsTranslator.models.{apiName}Config");
-                var config = Activator.CreateInstance(type) as TranslateAPIConfig;
+                var config = type != null && typeof(TranslateAPIConfig).IsAssignableFrom(type)
+                    ? Activator.CreateInstance(type) as TranslateAPIConfig
+                    : null;
+                config ??= new TranslateAPIConfig();
                 configs.Insert(configIndex + 1, config);
                 SwitchConfig(apiName, configIndex + 1);
 
@@ -67,11 +72,11 @@ namespace LiveCaptionsTranslator
 
         private void DeleteButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button)
+            if (sender is Button { Tag: string apiName })
             {
-                string apiName = button.Tag as string;
-                var configs = Translator.Setting.Configs[apiName];
-                var configIndex = Translator.Setting.ConfigIndices[apiName];
+                if (!Translator.Setting.Configs.TryGetValue(apiName, out var configs) ||
+                    !Translator.Setting.ConfigIndices.TryGetValue(apiName, out int configIndex))
+                    return;
 
                 if (configs.Count <= 1)
                 {
@@ -87,21 +92,19 @@ namespace LiveCaptionsTranslator
 
         private void PriorButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button)
+            if (sender is Button { Tag: string apiName })
             {
-                string apiName = button.Tag as string;
-                var configIndex = Translator.Setting.ConfigIndices[apiName];
-                SwitchConfig(apiName, configIndex - 1);
+                if (Translator.Setting.ConfigIndices.TryGetValue(apiName, out int configIndex))
+                    SwitchConfig(apiName, configIndex - 1);
             }
         }
 
         private void NextButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button)
+            if (sender is Button { Tag: string apiName })
             {
-                string apiName = button.Tag as string;
-                var configIndex = Translator.Setting.ConfigIndices[apiName];
-                SwitchConfig(apiName, configIndex + 1);
+                if (Translator.Setting.ConfigIndices.TryGetValue(apiName, out int configIndex))
+                    SwitchConfig(apiName, configIndex + 1);
             }
         }
 
@@ -110,8 +113,8 @@ namespace LiveCaptionsTranslator
             if (sender is System.Windows.Controls.Button button)
             {
                 SelectButton(button);
-                string targetSection = button.Tag.ToString();
-                if (sectionReferences.TryGetValue(targetSection, out FrameworkElement element))
+                string targetSection = button.Tag?.ToString() ?? string.Empty;
+                if (sectionReferences.TryGetValue(targetSection, out var element) && element != null)
                     element.BringIntoView();
             }
         }
@@ -195,15 +198,17 @@ namespace LiveCaptionsTranslator
 
         private void SwitchConfig(string apiName, int index)
         {
-            if (index < 0 || index >= Translator.Setting.Configs[apiName].Count)
+            if (!Translator.Setting.Configs.TryGetValue(apiName, out var configs) ||
+                index < 0 || index >= configs.Count)
                 return;
 
-            if (Translator.Setting.ConfigIndices[apiName] != index)
+            if (!Translator.Setting.ConfigIndices.TryGetValue(apiName, out int currentIndex) ||
+                currentIndex != index)
                 Translator.Setting.ConfigIndices[apiName] = index;
 
             if (FindName($"{apiName}Index") is TextBlock indexTextBlock)
             {
-                int total = Translator.Setting.Configs[apiName].Count;
+                int total = configs.Count;
                 indexTextBlock.Text = $"{index + 1}/{total}";
             }
             Translator.Setting.OnPropertyChanged(null);
@@ -211,8 +216,8 @@ namespace LiveCaptionsTranslator
 
         private void SelectButton(System.Windows.Controls.Button button)
         {
-            if (currentSelected != null)
-                currentSelected.Background = new SolidColorBrush(Colors.Transparent);
+            currentSelected?.SetCurrentValue(System.Windows.Controls.Control.BackgroundProperty,
+                new SolidColorBrush(Colors.Transparent));
             button.Background = (Brush)FindResource("ControlFillColorSecondaryBrush");
             currentSelected = button;
         }

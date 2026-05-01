@@ -32,7 +32,7 @@ namespace LiveCaptionsTranslator.apis
             {
                 "LMStudio" => TextUtil.NormalizeUrl(baseUrl) + "/models",
                 "Ollama" => TextUtil.NormalizeUrl(baseUrl) + "/api/tags",
-                _ => null
+                _ => string.Empty
             };
         }
 
@@ -71,8 +71,8 @@ namespace LiveCaptionsTranslator.apis
 
         public class ModelInfo
         {
-            public string Id { get; set; }
-            public string DisplayName { get; set; }
+            public string Id { get; set; } = string.Empty;
+            public string DisplayName { get; set; } = string.Empty;
         }
 
         private static List<ModelInfo> ParseLMStudioModels(string json)
@@ -88,15 +88,15 @@ namespace LiveCaptionsTranslator.apis
 
                 foreach (var model in modelsArray.EnumerateArray())
                 {
-                    string type = model.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
+                    string? type = model.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
                     if (type != "llm")
                         continue;
 
-                    string key = model.TryGetProperty("key", out var keyProp) ? keyProp.GetString() : null;
+                    string? key = model.TryGetProperty("key", out var keyProp) ? keyProp.GetString() : null;
                     if (string.IsNullOrEmpty(key))
                         continue;
 
-                    string displayName = model.TryGetProperty("display_name", out var dnProp) ? dnProp.GetString() : key;
+                    string? displayName = model.TryGetProperty("display_name", out var dnProp) ? dnProp.GetString() : key;
 
                     result.Add(new ModelInfo { Id = key, DisplayName = displayName ?? key });
                 }
@@ -119,7 +119,7 @@ namespace LiveCaptionsTranslator.apis
 
                 foreach (var model in modelsArray.EnumerateArray())
                 {
-                    string name = model.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+                    string? name = model.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
                     if (string.IsNullOrEmpty(name))
                         continue;
 

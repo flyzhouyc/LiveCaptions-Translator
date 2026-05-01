@@ -1,12 +1,22 @@
-﻿namespace LiveCaptionsTranslator.models
+using LiveCaptionsTranslator.utils;
+
+namespace LiveCaptionsTranslator.models
 {
     public class TranslationTaskQueue
     {
+        private const int MaxQueuedTasks = 8;
         private readonly object _lock = new object();
         private readonly List<TranslationTask> tasks;
 
         private (string translatedText, bool isChoke) output;
-        public (string translatedText, bool isChoke) Output => output;
+        public (string translatedText, bool isChoke) Output
+        {
+            get
+            {
+                lock (_lock)
+                    return output;
+            }
+        }
 
         public TranslationTaskQueue()
         {
@@ -17,32 +27,73 @@
         public void Enqueue(Func<CancellationToken, Task<(string, bool)>> worker, string originalText)
         {
             var newTranslationTask = new TranslationTask(worker, originalText, new CancellationTokenSource());
+            var droppedTasks = new List<TranslationTask>();
+
             lock (_lock)
             {
                 tasks.Add(newTranslationTask);
+                while (tasks.Count > MaxQueuedTasks)
+                {
+                    droppedTasks.Add(tasks[0]);
+                    tasks.RemoveAt(0);
+                }
             }
-            // Run `OnTaskCompleted` in a new thread.
-            newTranslationTask.Task.ContinueWith(
-                task => OnTaskCompleted(newTranslationTask),
-                TaskContinuationOptions.OnlyOnRanToCompletion
-            );
+
+            foreach (var droppedTask in droppedTasks)
+                droppedTask.Cancel();
+            if (droppedTasks.Count > 0)
+                AppLogger.Warning($"Dropped {droppedTasks.Count} stale translation task(s).");
+
+            _ = newTranslationTask.Task.ContinueWith(
+                async task =>
+                {
+                    try
+                    {
+                        if (task.IsCanceled)
+                            return;
+                        if (task.IsFaulted)
+                        {
+                            AppLogger.Warning("Translation task faulted.", task.Exception);
+                            return;
+                        }
+
+                        await OnTaskCompleted(newTranslationTask);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Error("Failed to complete translation task.", ex);
+                    }
+                    finally
+                    {
+                        newTranslationTask.Dispose();
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default
+            ).Unwrap();
         }
 
         private async Task OnTaskCompleted(TranslationTask translationTask)
         {
+            (string translatedText, bool isChoke) completedOutput;
             lock (_lock)
             {
                 var index = tasks.IndexOf(translationTask);
+                if (index < 0)
+                    return;
+
                 for (int i = 0; i < index; i++)
-                    tasks[i].CTS.Cancel();
+                    tasks[i].Cancel();
                 for (int i = index; i >= 0; i--)
                     tasks.RemoveAt(i);
+
+                output = translationTask.Task.Result;
+                completedOutput = output;
             }
 
-            output = translationTask.Task.Result;
-            var translatedText = output.Item1;
+            var translatedText = completedOutput.translatedText;
 
-            // Log after translation.
             bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
             if (!isOverwrite)
                 await Translator.AddContexts();
@@ -50,11 +101,12 @@
         }
     }
 
-    public class TranslationTask
+    public class TranslationTask : IDisposable
     {
         public Task<(string, bool)> Task { get; }
         public string OriginalText { get; }
         public CancellationTokenSource CTS { get; }
+        private int disposed;
 
         public TranslationTask(Func<CancellationToken, Task<(string, bool)>> worker,
             string originalText, CancellationTokenSource cts)
@@ -62,6 +114,25 @@
             Task = worker(cts.Token);
             OriginalText = originalText;
             CTS = cts;
+        }
+
+        public void Cancel()
+        {
+            try
+            {
+                CTS.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0)
+                return;
+
+            CTS.Dispose();
         }
     }
 }

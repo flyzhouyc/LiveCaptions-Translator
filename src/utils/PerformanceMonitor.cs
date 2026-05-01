@@ -39,7 +39,7 @@ namespace LiveCaptionsTranslator.utils
         private static SystemLoadState currentSystemState = SystemLoadState.Normal;
         
         // 性能事件
-        public static event Action<SystemLoadState> SystemLoadChanged;
+        public static event Action<SystemLoadState>? SystemLoadChanged;
         
         /// <summary>
         /// 当前系统负载状态
