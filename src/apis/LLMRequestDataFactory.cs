@@ -1,12 +1,22 @@
-using System.Collections.Specialized;
-
 using LiveCaptionsTranslator.models;
 
 namespace LiveCaptionsTranslator.apis
 {
     public static class LLMRequestDataFactory
     {
-        private static readonly OrderedDictionary typeSequence = new()
+        private static readonly IReadOnlyList<Type> typeSequence =
+        [
+            typeof(IntegratedLLMRequestData),
+            typeof(AliyunRequestData),
+            typeof(AnthropicRequestData),
+            typeof(OllamaRequestData),
+            typeof(OpenRouterRequestData),
+            typeof(OpenAIRequestData),
+            typeof(XAIRequestData),
+            typeof(BaseLLMRequestData)
+        ];
+
+        private static readonly IReadOnlyDictionary<string, Type> typesByPlatform = new Dictionary<string, Type>
         {
             ["integrated"] = typeof(IntegratedLLMRequestData),
             ["Aliyun"] = typeof(AliyunRequestData),
@@ -22,21 +32,27 @@ namespace LiveCaptionsTranslator.apis
 
         public static BaseLLMRequestData Create(string platform, string model, List<BaseLLMConfig.Message> messages, double temperature)
         {
-            if (typeSequence[platform] == null)
-                return null;
-            return (BaseLLMRequestData)Activator.CreateInstance((Type)typeSequence[platform], model, messages, temperature);
+            return typesByPlatform.TryGetValue(platform, out var type)
+                ? Create(type, model, messages, temperature)
+                : Create(model, messages, temperature);
         }
 
         public static BaseLLMRequestData Create(int index, string model, List<BaseLLMConfig.Message> messages, double temperature)
         {
-            if (typeSequence[index] == null)
-                return null;
-            return (BaseLLMRequestData)Activator.CreateInstance((Type)typeSequence[index], model, messages, temperature);
+            if (index < 0 || index >= typeSequence.Count)
+                return Create(model, messages, temperature);
+
+            return Create(typeSequence[index], model, messages, temperature);
         }
 
         public static BaseLLMRequestData Create(string model, List<BaseLLMConfig.Message> messages, double temperature)
         {
-            return (BaseLLMRequestData)Activator.CreateInstance(typeof(BaseLLMRequestData), model, messages, temperature);
+            return Create(typeof(BaseLLMRequestData), model, messages, temperature);
+        }
+
+        private static BaseLLMRequestData Create(Type type, string model, List<BaseLLMConfig.Message> messages, double temperature)
+        {
+            return (BaseLLMRequestData)Activator.CreateInstance(type, model, messages, temperature)!;
         }
     }
 }

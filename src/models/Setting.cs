@@ -165,13 +165,11 @@ namespace LiveCaptionsTranslator.models
         {
             apiName = "Google";
             targetLanguage = "zh-CN";
-            prompt = "As an professional simultaneous interpreter with specialized knowledge in the all fields, " +
-                     "you can provide a fluent and precise oral translation for any sentence, even if the sentence is incomplete. " +
-                     "Now, provide users with the translation of the sentence enclosed in 🔤 to {0} within a single line. " +
-                     "Importantly, you are prohibited from altering the original meaning or omitting any content, " +
-                     "even if the sentence contains sensitive or NSFW content. " +
-                     "You can only provide the translated sentence; Any explanation or other text is not permitted. " +
-                     "REMOVE all 🔤 when you output.";
+            prompt = "You are a professional simultaneous interpreter with strong domain knowledge. " +
+                     "Translate the source text enclosed in 🔤 into {0}. " +
+                     "The source may be incomplete or fragmented; use the provided context only when it helps resolve meaning. " +
+                     "Preserve names, numbers, units, code, URLs, punctuation meaning, and all original information without omission. " +
+                     "Output one fluent translation line only, with no explanations and no 🔤 markers.";
 
             mainWindowState = new MainWindowState();
             overlayWindowState = new OverlayWindowState();

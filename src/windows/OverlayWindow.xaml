@@ -19,7 +19,7 @@
     ShowInTaskbar="False"
     Topmost="True"
     WindowStyle="None"
-    SizeToContent="Height"
+    SizeToContent="Manual"
     mc:Ignorable="d">
 
     <Window.Resources>
@@ -38,9 +38,9 @@
             Background="#80000000"
             CornerRadius="8"
             MouseLeftButtonDown="Border_MouseLeftButtonDown">
-            <Grid>
+            <Grid ClipToBounds="True">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid.Resources>
@@ -55,9 +55,10 @@
                     Grid.Row="0"
                     Margin="5,2,5,2"
                     Padding="8"
-                    VerticalAlignment="Top"
+                    VerticalAlignment="Stretch"
                     Background="Transparent"
-                    BorderThickness="0">
+                    BorderThickness="0"
+                    ClipToBounds="True">
                     <local:StrokeDecorator
                         x:Name="TranslatedCaptionDecorator"
                         Stroke="Black"
@@ -65,6 +66,7 @@
                         <TextBlock
                             x:Name="TranslatedCaption"
                             FontSize="18"
+                            ClipToBounds="True"
                             Style="{StaticResource CaptionBlockStyle}">
                             <Run x:Name="NoticePrefixRun" Text="{Binding OverlayNoticePrefix, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas" />
                             <Run x:Name="PreviousTranslationRun" Text="{Binding OverlayPreviousTranslation, Mode=OneWay}" />
@@ -77,9 +79,10 @@
                     Grid.Row="1"
                     Margin="5,2,5,2"
                     Padding="8"
-                    VerticalAlignment="Top"
+                    VerticalAlignment="Stretch"
                     Background="Transparent"
-                    BorderThickness="0">
+                    BorderThickness="0"
+                    ClipToBounds="True">
                     <local:StrokeDecorator
                         x:Name="OriginalCaptionDecorator"
                         Stroke="Black"
@@ -87,6 +90,7 @@
                         <TextBlock
                             x:Name="OriginalCaption"
                             FontSize="15"
+                            ClipToBounds="True"
                             Style="{StaticResource CaptionBlockStyle}"
                             Text="{Binding OverlayOriginalCaption, UpdateSourceTrigger=PropertyChanged}">
                         </TextBlock>

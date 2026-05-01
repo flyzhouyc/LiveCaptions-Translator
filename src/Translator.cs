@@ -16,7 +16,10 @@ namespace LiveCaptionsTranslator
         private static Setting? setting = null;
 
         private static readonly Queue<string> pendingTextQueue = new();
+        private static readonly object pendingTextLock = new();
         private static readonly TranslationTaskQueue translationTaskQueue = new();
+        private static readonly TimeSpan OverlayCaptionUpdateInterval = TimeSpan.FromMilliseconds(220);
+        private static readonly TimeSpan PartialTranslationInterval = TimeSpan.FromMilliseconds(650);
 
         public static AutomationElement? Window
         {
@@ -48,6 +51,8 @@ namespace LiveCaptionsTranslator
         {
             int idleCount = 0;
             int syncCount = 0;
+            var overlayCaptionUpdate = Stopwatch.StartNew();
+            var partialTranslationUpdate = Stopwatch.StartNew();
 
             while (true)
             {
@@ -72,7 +77,10 @@ namespace LiveCaptionsTranslator
                     continue;
                 }
                 if (string.IsNullOrEmpty(fullText))
+                {
+                    Thread.Sleep(80);
                     continue;
+                }
 
                 // Preprocess
                 fullText = RegexPatterns.Acronym().Replace(fullText, "$1$2");
@@ -104,14 +112,12 @@ namespace LiveCaptionsTranslator
                     latestCaption = fullText.Substring(lastEOSIndex + 1);
                 }
 
-                // `OverlayOriginalCaption`: The sentence to be displayed on Overlay Window.
-                Caption.OverlayOriginalCaption = latestCaption;
-                for (int historyCount = Math.Min(Setting.DisplaySentences, Caption.Contexts.Count);
-                     historyCount > 0 && lastEOSIndex > 0;
-                     historyCount--)
+                string overlayOriginalCaption = BuildOverlayOriginalCaption(fullText, latestCaption, lastEOSIndex);
+                if (IsCompleteSentence(latestCaption) ||
+                    overlayCaptionUpdate.Elapsed >= OverlayCaptionUpdateInterval)
                 {
-                    lastEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
-                    Caption.OverlayOriginalCaption = fullText.Substring(lastEOSIndex + 1);
+                    Caption.OverlayOriginalCaption = overlayOriginalCaption;
+                    overlayCaptionUpdate.Restart();
                 }
 
                 // `DisplayOriginalCaption`: The sentence to be displayed on Main Window.
@@ -136,7 +142,8 @@ namespace LiveCaptionsTranslator
                     if (Array.IndexOf(TextUtil.PUNC_EOS, Caption.OriginalCaption[^1]) != -1)
                     {
                         syncCount = 0;
-                        pendingTextQueue.Enqueue(Caption.OriginalCaption);
+                        EnqueuePendingText(Caption.OriginalCaption);
+                        partialTranslationUpdate.Restart();
                     }
                     else if (Encoding.UTF8.GetByteCount(Caption.OriginalCaption) >= TextUtil.SHORT_THRESHOLD)
                         syncCount++;
@@ -149,8 +156,13 @@ namespace LiveCaptionsTranslator
                 if (syncCount > Setting.MaxSyncInterval ||
                     idleCount == Setting.MaxIdleInterval)
                 {
-                    syncCount = 0;
-                    pendingTextQueue.Enqueue(Caption.OriginalCaption);
+                    bool idleFlush = idleCount == Setting.MaxIdleInterval;
+                    if (idleFlush || partialTranslationUpdate.Elapsed >= PartialTranslationInterval)
+                    {
+                        syncCount = 0;
+                        EnqueuePendingText(Caption.OriginalCaption);
+                        partialTranslationUpdate.Restart();
+                    }
                 }
 
                 Thread.Sleep(25);
@@ -170,10 +182,8 @@ namespace LiveCaptionsTranslator
                 }
 
                 // Translate
-                if (pendingTextQueue.Count > 0)
+                if (TryDequeuePendingText(out string originalSnapshot))
                 {
-                    var originalSnapshot = pendingTextQueue.Dequeue();
-
                     if (LogOnlyFlag)
                     {
                         bool isOverwrite = await IsOverwrite(originalSnapshot);
@@ -230,10 +240,71 @@ namespace LiveCaptionsTranslator
             }
         }
 
+        private static string BuildOverlayOriginalCaption(string fullText, string latestCaption, int lastEOSIndex)
+        {
+            if (lastEOSIndex <= 0 || Setting == null || Caption == null || Caption.Contexts.Count == 0)
+                return latestCaption;
+
+            int displaySentences = Math.Min(Setting.DisplaySentences, Caption.Contexts.Count);
+            if (displaySentences <= 0)
+                return latestCaption;
+
+            int currentStartIndex = lastEOSIndex + 1;
+            int previousStartEOSIndex = lastEOSIndex;
+            for (int historyCount = displaySentences; historyCount > 0 && previousStartEOSIndex > 0; historyCount--)
+                previousStartEOSIndex = fullText[0..previousStartEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
+
+            int previousStartIndex = previousStartEOSIndex + 1;
+            if (previousStartIndex >= currentStartIndex)
+                return latestCaption;
+
+            string previousCaption = fullText.Substring(previousStartIndex, currentStartIndex - previousStartIndex).Trim();
+            string currentCaption = latestCaption.TrimStart();
+
+            return string.IsNullOrEmpty(previousCaption)
+                ? latestCaption
+                : previousCaption + Environment.NewLine + currentCaption;
+        }
+
+        private static void EnqueuePendingText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            lock (pendingTextLock)
+            {
+                if (pendingTextQueue.Count > 0 && string.CompareOrdinal(pendingTextQueue.Last(), text) == 0)
+                    return;
+
+                pendingTextQueue.Enqueue(text);
+            }
+        }
+
+        private static bool TryDequeuePendingText(out string originalSnapshot)
+        {
+            lock (pendingTextLock)
+            {
+                while (pendingTextQueue.Count > 0)
+                {
+                    originalSnapshot = pendingTextQueue.Dequeue();
+                    if (IsCompleteSentence(originalSnapshot) || pendingTextQueue.Count == 0)
+                        return true;
+                }
+            }
+
+            originalSnapshot = string.Empty;
+            return false;
+        }
+
+        private static bool IsCompleteSentence(string text)
+        {
+            return !string.IsNullOrEmpty(text) && Array.IndexOf(TextUtil.PUNC_EOS, text[^1]) != -1;
+        }
+
         public static async Task<(string, bool)> Translate(string text, CancellationToken token = default)
         {
             string translatedText;
-            bool isChoke = Array.IndexOf(TextUtil.PUNC_EOS, text[^1]) != -1;
+            bool isChoke = IsCompleteSentence(text);
 
             try
             {

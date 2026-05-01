@@ -51,16 +51,11 @@ namespace LiveCaptionsTranslator.apis
         };
         private static int openai_fallback_index = 0;
 
-        public static async Task<string> OpenAI(string text, CancellationToken token = default)
+        private static List<BaseLLMConfig.Message> BuildLLMMessages(string language, string text)
         {
-            var config = Translator.Setting["OpenAI"] as OpenAIConfig;
-            string language = OpenAIConfig.SupportedLanguages.TryGetValue(
-                Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
-
             var messages = new List<BaseLLMConfig.Message>
             {
-                new BaseLLMConfig.Message { role = "system", content = string.Format(Prompt, language) },
-                new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" }
+                new BaseLLMConfig.Message { role = "system", content = string.Format(Prompt, language) }
             };
 
             if (Translator.Setting.ContextAware)
@@ -70,14 +65,24 @@ namespace LiveCaptionsTranslator.apis
                     string translatedText = entry.TranslatedText;
                     if (translatedText.Contains("[ERROR]") || translatedText.Contains("[WARNING]"))
                         continue;
-                    translatedText = RegexPatterns.NoticePrefix().Replace(translatedText, "");
 
-                    messages.InsertRange(1, [
-                        new BaseLLMConfig.Message { role = "user", content = $"🔤 {entry.SourceText} 🔤" },
-                        new BaseLLMConfig.Message { role = "assistant", content = $"{translatedText}" }
-                    ]);
+                    translatedText = RegexPatterns.NoticePrefix().Replace(translatedText, "");
+                    messages.Add(new BaseLLMConfig.Message { role = "user", content = $"🔤 {entry.SourceText} 🔤" });
+                    messages.Add(new BaseLLMConfig.Message { role = "assistant", content = translatedText });
                 }
             }
+
+            messages.Add(new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" });
+            return messages;
+        }
+
+        public static async Task<string> OpenAI(string text, CancellationToken token = default)
+        {
+            var config = Translator.Setting["OpenAI"] as OpenAIConfig;
+            string language = OpenAIConfig.SupportedLanguages.TryGetValue(
+                Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
+
+            var messages = BuildLLMMessages(language, text);
 
             client.DefaultRequestHeaders.Clear();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.ApiKey}");
@@ -136,27 +141,7 @@ namespace LiveCaptionsTranslator.apis
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl + "/api/chat");
 
-            var messages = new List<BaseLLMConfig.Message>
-            {
-                new BaseLLMConfig.Message { role = "system", content = string.Format(Prompt, language) },
-                new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" }
-            };
-
-            if (Translator.Setting.ContextAware)
-            {
-                foreach (var entry in Translator.Caption.AwareContexts)
-                {
-                    string translatedText = entry.TranslatedText;
-                    if (translatedText.Contains("[ERROR]") || translatedText.Contains("[WARNING]"))
-                        continue;
-                    translatedText = RegexPatterns.NoticePrefix().Replace(translatedText, "");
-
-                    messages.InsertRange(1, [
-                        new BaseLLMConfig.Message { role = "user", content = $"🔤 {entry.SourceText} 🔤" },
-                        new BaseLLMConfig.Message { role = "assistant", content = $"{translatedText}" }
-                    ]);
-                }
-            }
+            var messages = BuildLLMMessages(language, text);
             
             var requestData = LLMRequestDataFactory.Create("Ollama", config.ModelName, messages, config.Temperature);
             requestData.keep_alive = config.keep_alive;
@@ -285,27 +270,7 @@ namespace LiveCaptionsTranslator.apis
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
             string apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
-            var messages = new List<BaseLLMConfig.Message>
-            {
-                new BaseLLMConfig.Message { role = "system", content = string.Format(Prompt, language) },
-                new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" }
-            };
-
-            if (Translator.Setting.ContextAware)
-            {
-                foreach (var entry in Translator.Caption.AwareContexts)
-                {
-                    string translatedText = entry.TranslatedText;
-                    if (translatedText.Contains("[ERROR]") || translatedText.Contains("[WARNING]"))
-                        continue;
-                    translatedText = RegexPatterns.NoticePrefix().Replace(translatedText, "");
-
-                    messages.InsertRange(1, [
-                        new BaseLLMConfig.Message { role = "user", content = $"🔤 {entry.SourceText} 🔤" },
-                        new BaseLLMConfig.Message { role = "assistant", content = $"{translatedText}" }
-                    ]);
-                }
-            }
+            var messages = BuildLLMMessages(language, text);
 
             var requestData = LLMRequestDataFactory.Create("OpenRouter", config.ModelName, messages, config.Temperature);
 

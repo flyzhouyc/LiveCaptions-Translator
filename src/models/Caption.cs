@@ -35,6 +35,8 @@ namespace LiveCaptionsTranslator.models
             get => displayOriginalCaption;
             set
             {
+                if (string.CompareOrdinal(displayOriginalCaption, value) == 0)
+                    return;
                 displayOriginalCaption = value;
                 OnPropertyChanged("DisplayOriginalCaption");
             }
@@ -44,6 +46,8 @@ namespace LiveCaptionsTranslator.models
             get => displayTranslatedCaption;
             set
             {
+                if (string.CompareOrdinal(displayTranslatedCaption, value) == 0)
+                    return;
                 displayTranslatedCaption = value;
                 OnPropertyChanged("DisplayTranslatedCaption");
             }
@@ -54,6 +58,8 @@ namespace LiveCaptionsTranslator.models
             get => overlayOriginalCaption;
             set
             {
+                if (string.CompareOrdinal(overlayOriginalCaption, value) == 0)
+                    return;
                 overlayOriginalCaption = value;
                 OnPropertyChanged("OverlayOriginalCaption");
             }
@@ -63,6 +69,8 @@ namespace LiveCaptionsTranslator.models
             get => overlayNoticePrefix;
             set
             {
+                if (string.CompareOrdinal(overlayNoticePrefix, value) == 0)
+                    return;
                 overlayNoticePrefix = value;
                 OnPropertyChanged("OverlayNoticePrefix");
             }
@@ -72,13 +80,21 @@ namespace LiveCaptionsTranslator.models
             get => overlayCurrentTranslation;
             set
             {
+                if (string.CompareOrdinal(overlayCurrentTranslation, value) == 0)
+                    return;
                 overlayCurrentTranslation = value;
                 OnPropertyChanged("OverlayCurrentTranslation");
             }
         }
 
-        public string OverlayPreviousTranslation =>
-            GetPreviousText(Translator.Setting.DisplaySentences, TextType.Translation);
+        public string OverlayPreviousTranslation
+        {
+            get
+            {
+                string previousTranslation = GetPreviousText(Translator.Setting.DisplaySentences, TextType.Translation);
+                return string.IsNullOrEmpty(previousTranslation) ? string.Empty : previousTranslation + Environment.NewLine;
+            }
+        }
 
         private Caption()
         {

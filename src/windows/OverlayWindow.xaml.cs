@@ -5,7 +5,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Threading;
 using Wpf.Ui.Controls;
 
 using LiveCaptionsTranslator.apis;
@@ -46,9 +45,6 @@ namespace LiveCaptionsTranslator
         {
             InitializeComponent();
             DataContext = Translator.Caption;
-
-            Loaded += (s, e) => Translator.Caption.PropertyChanged += TranslatedChanged;
-            Unloaded += (s, e) => Translator.Caption.PropertyChanged -= TranslatedChanged;
 
             OriginalCaption.FontWeight = Translator.Setting.OverlayWindow.FontBold == Utils.FontBold.Both ?
                 FontWeights.Bold : FontWeights.Regular;
@@ -138,11 +134,6 @@ namespace LiveCaptionsTranslator
         {
             BottomThumb_OnDragDelta(sender, e);
             RightThumb_OnDragDelta(sender, e);
-        }
-
-        private void TranslatedChanged(object sender, PropertyChangedEventArgs e)
-        {
-            ApplyFontSize();
         }
 
         private void Window_MouseEnter(object sender, MouseEventArgs e)
@@ -337,11 +328,8 @@ namespace LiveCaptionsTranslator
 
         public void ApplyFontSize()
         {
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                OriginalCaption.FontSize = Translator.Setting.OverlayWindow.FontSize;
-                TranslatedCaption.FontSize = (int)(OriginalCaption.FontSize * 1.25);
-            }), DispatcherPriority.Background);
+            OriginalCaption.FontSize = Translator.Setting.OverlayWindow.FontSize;
+            TranslatedCaption.FontSize = (int)(OriginalCaption.FontSize * 1.25);
         }
 
         public void ApplyFontStroke()
