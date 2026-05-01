@@ -17,14 +17,9 @@
 		<Description>A real-time speech translation tool based on Windows LiveCaptions.</Description>
 		<Copyright>Copyright (c) 2024 SakiRinn and other contributors</Copyright>
 		<Authors>SakiRinn</Authors>
-		<ApplicationIcon>src\LiveCaptions.ico</ApplicationIcon>
+		<ApplicationIcon>src\LiveCaptions-Translator.ico</ApplicationIcon>
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<Platforms>AnyCPU;ARM64</Platforms>
-		
-		<!-- 优化编译器选项 -->
-		<TieredCompilation>true</TieredCompilation>
-		<TieredCompilationQuickJit>true</TieredCompilationQuickJit>
-		<TieredCompilationQuickJitForLoops>true</TieredCompilationQuickJitForLoops>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -32,17 +27,15 @@
 			<Generator>MSBuild:Compile</Generator>
 			<SubType>Designer</SubType>
 		</ApplicationDefinition>
-		<Content Include="src\LiveCaptions.ico" />
+		<Content Include="src\LiveCaptions-Translator.ico" />
 		
 		<PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
 		
+		<PackageReference Include="CsvHelper" Version="33.0.1" />
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.1" />
 		<PackageReference Include="System.Net.Http" Version="4.3.4" />
 		<PackageReference Include="System.Text.Json" Version="8.0.5" />
 		<PackageReference Include="WPF-UI" Version="4.0.1" />
-		
-		<!-- 新增内存优化相关包 -->
-		<PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -1,6 +1,8 @@
 ﻿using System.IO;
 using System.Text;
+using System.Globalization;
 using Microsoft.Data.Sqlite;
+using CsvHelper;
 
 using LiveCaptionsTranslator.models;
 
@@ -8,7 +10,8 @@ namespace LiveCaptionsTranslator.utils
 {
     public static class SQLiteHistoryLogger
     {
-        private static readonly string CONNECTION_STRING = "Data Source=translation_history.db;";
+        public static readonly string CONNECTION_STRING = "Data Source=translation_history.db;";
+
         private static SqliteConnection _sharedConnection;
         private static readonly object _connectionLock = new object();
 
@@ -84,47 +87,59 @@ namespace LiveCaptionsTranslator.utils
             int page, int maxRow, string searchText, CancellationToken token = default)
         {
             var history = new List<TranslationHistoryEntry>();
-            int maxPage = 1;
-            using (var command = new SqliteCommand(@$"SELECT COUNT() AS maxPage
+            int totalCount = 0;
+            using (var command = new SqliteCommand(@"
+                SELECT COUNT(*) 
                 FROM TranslationHistory
-                WHERE SourceText LIKE '%{searchText}%' OR TranslatedText LIKE '%{searchText}%'",
-                GetConnection()))
+                WHERE SourceText LIKE @search OR TranslatedText LIKE @search", GetConnection()))
+
             {
-                maxPage = Convert.ToInt32(await command.ExecuteScalarAsync(token)) / maxRow;
+                command.Parameters.AddWithValue("@search", $"%{searchText}%");
+                totalCount = Convert.ToInt32(await command.ExecuteScalarAsync(token));
             }
 
-            using (var command = new SqliteCommand(@$"
+            // 计算最大页数，至少为 1
+            int maxPage = Math.Max(1, (int)Math.Ceiling(totalCount / (double)maxRow));
+            int offset = Math.Max(0, (page - 1) * maxRow);
+
+            using (var command = new SqliteCommand(@"
                 SELECT Timestamp, SourceText, TranslatedText, TargetLanguage, ApiUsed
                 FROM TranslationHistory
-                WHERE SourceText LIKE '%{searchText}%' OR TranslatedText LIKE '%{searchText}%'
+                WHERE SourceText LIKE @search OR TranslatedText LIKE @search
                 ORDER BY Timestamp DESC
-                LIMIT " + maxRow + " OFFSET " + (page * maxRow - maxRow),
-                GetConnection()))
-            using (var reader = await command.ExecuteReaderAsync(token))
+                LIMIT @maxRow OFFSET @offset", GetConnection()))
+
             {
-                while (await reader.ReadAsync(token))
+                command.Parameters.AddWithValue("@search", $"%{searchText}%");
+                command.Parameters.AddWithValue("@maxRow", maxRow);
+                command.Parameters.AddWithValue("@offset", offset);
+
+                using (var reader = await command.ExecuteReaderAsync(token))
                 {
-                    string unixTime = reader.GetString(reader.GetOrdinal("Timestamp"));
-                    DateTime localTime;
-                    try
+                    while (await reader.ReadAsync(token))
                     {
-                        localTime = DateTimeOffset.FromUnixTimeSeconds((long)Convert.ToDouble(unixTime)).LocalDateTime;
+                        string unixTime = reader.GetString(reader.GetOrdinal("Timestamp"));
+                        DateTime localTime;
+                        try
+                        {
+                            localTime = DateTimeOffset.FromUnixTimeSeconds((long)Convert.ToDouble(unixTime)).LocalDateTime;
+                        }
+                        catch (FormatException)
+                        {
+                            // DEPRECATED
+                            await MigrateOldTimestampFormat();
+                            return await LoadHistoryAsync(page, maxRow, string.Empty);
+                        }
+                        history.Add(new TranslationHistoryEntry
+                        {
+                            Timestamp = localTime.ToString("yyyy-MM-dd HH:mm"),
+                            TimestampFull = localTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                            SourceText = reader.GetString(reader.GetOrdinal("SourceText")),
+                            TranslatedText = reader.GetString(reader.GetOrdinal("TranslatedText")),
+                            TargetLanguage = reader.GetString(reader.GetOrdinal("TargetLanguage")),
+                            ApiUsed = reader.GetString(reader.GetOrdinal("ApiUsed"))
+                        });
                     }
-                    catch (FormatException)
-                    {
-                        // DEPRECATED
-                        await MigrateOldTimestampFormat();
-                        return await LoadHistoryAsync(page, maxRow, string.Empty);
-                    }
-                    history.Add(new TranslationHistoryEntry
-                    {
-                        Timestamp = localTime.ToString("MM/dd HH:mm"),
-                        TimestampFull = localTime.ToString("MM/dd/yy, HH:mm:ss"),
-                        SourceText = reader.GetString(reader.GetOrdinal("SourceText")),
-                        TranslatedText = reader.GetString(reader.GetOrdinal("TranslatedText")),
-                        TargetLanguage = reader.GetString(reader.GetOrdinal("TargetLanguage")),
-                        ApiUsed = reader.GetString(reader.GetOrdinal("ApiUsed"))
-                    });
                 }
             }
             return (history, maxPage);
@@ -174,8 +189,8 @@ namespace LiveCaptionsTranslator.utils
                     DateTime localTime = DateTimeOffset.FromUnixTimeSeconds((long)Convert.ToDouble(unixTime)).LocalDateTime;
                     return new TranslationHistoryEntry
                     {
-                        Timestamp = localTime.ToString("MM/dd HH:mm"),
-                        TimestampFull = localTime.ToString("MM/dd/yy, HH:mm:ss"),
+                        Timestamp = localTime.ToString("yyyy-MM-dd HH:mm"),
+                        TimestampFull = localTime.ToString("yyyy-MM-dd HH:mm:ss"),
                         SourceText = reader.GetString(reader.GetOrdinal("SourceText")),
                         TranslatedText = reader.GetString(reader.GetOrdinal("TranslatedText")),
                         TargetLanguage = reader.GetString(reader.GetOrdinal("TargetLanguage")),
@@ -215,8 +230,8 @@ namespace LiveCaptionsTranslator.utils
                     DateTime localTime = DateTimeOffset.FromUnixTimeSeconds((long)Convert.ToDouble(unixTime)).LocalDateTime;
                     history.Add(new TranslationHistoryEntry
                     {
-                        Timestamp = localTime.ToString("MM/dd HH:mm"),
-                        TimestampFull = localTime.ToString("MM/dd/yy, HH:mm:ss"),
+                        Timestamp = localTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                        TimestampFull = localTime.ToString("yyyy-MM-dd HH:mm:ss"),
                         SourceText = reader.GetString(reader.GetOrdinal("SourceText")),
                         TranslatedText = reader.GetString(reader.GetOrdinal("TranslatedText")),
                         TargetLanguage = reader.GetString(reader.GetOrdinal("TargetLanguage")),
@@ -225,12 +240,9 @@ namespace LiveCaptionsTranslator.utils
                 }
             }
 
-            var csv = new StringBuilder();
-            csv.AppendLine("Timestamp,SourceText,TranslatedText,TargetLanguage,ApiUsed");
-            foreach (var entry in history)
-                csv.AppendLine($"{entry.Timestamp},{entry.SourceText},{entry.TranslatedText},{entry.TargetLanguage},{entry.ApiUsed}");
-
-            await File.WriteAllTextAsync(filePath, csv.ToString());
+            using var writer = new StreamWriter(filePath, false, new UTF8Encoding(true));
+            using var csvWriter = new CsvWriter(writer, CultureInfo.InvariantCulture);
+            await csvWriter.WriteRecordsAsync(history, token);
         }
 
         // DEPRECATED

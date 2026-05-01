@@ -1,61 +1,35 @@
-﻿using System.Windows;
+﻿using System.Reflection;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Wpf.Ui.Appearance;
 
-using LiveCaptionsTranslator.utils;
 using LiveCaptionsTranslator.models;
+using LiveCaptionsTranslator.utils;
+using Wpf.Ui.Controls;
 
 namespace LiveCaptionsTranslator
 {
     public partial class SettingPage : Page
     {
         private static SettingWindow? SettingWindow;
-        
+
         public SettingPage()
         {
             InitializeComponent();
             ApplicationThemeManager.ApplySystemTheme();
             DataContext = Translator.Setting;
 
+            Loaded += (s, e) =>
+            {
+                (App.Current.MainWindow as MainWindow)?.AutoHeightAdjust(maxHeight: (int)App.Current.MainWindow.MinHeight);
+                CheckForFirstUse();
+            };
+
             TranslateAPIBox.ItemsSource = Translator.Setting?.Configs.Keys;
             TranslateAPIBox.SelectedIndex = 0;
 
             LoadAPISetting();
-            
-            // 初始化内容类型选择框
-            InitContentTypeBox();
-        }
-        
-        private void InitContentTypeBox()
-        {
-            // 根据当前设置选择对应的内容类型
-            var currentPromptTemplate = Translator.Setting.PromptTemplate;
-            
-            switch (currentPromptTemplate)
-            {
-                case PromptTemplate.AutoDetection:
-                    ContentTypeBox.SelectedIndex = 0;
-                    break;
-                case PromptTemplate.General:
-                    ContentTypeBox.SelectedIndex = 1;
-                    break;
-                case PromptTemplate.Technical:
-                    ContentTypeBox.SelectedIndex = 2;
-                    break;
-                case PromptTemplate.Conversation:
-                    ContentTypeBox.SelectedIndex = 3;
-                    break;
-                case PromptTemplate.Conference:
-                    ContentTypeBox.SelectedIndex = 4;
-                    break;
-                case PromptTemplate.Media:
-                    ContentTypeBox.SelectedIndex = 5;
-                    break;
-                default:
-                    ContentTypeBox.SelectedIndex = 0;
-                    break;
-            }
         }
 
         private void LiveCaptionsButton_click(object sender, RoutedEventArgs e)
@@ -94,7 +68,7 @@ namespace LiveCaptionsTranslator
         {
             Translator.Setting.TargetLanguage = TargetLangBox.Text;
         }
-        
+
         private void APISettingButton_click(object sender, RoutedEventArgs e)
         {
             if (SettingWindow != null && SettingWindow.IsLoaded)
@@ -106,62 +80,21 @@ namespace LiveCaptionsTranslator
                 SettingWindow.Show();
             }
         }
-        
-        private void CaptionLogMax_SelectionChanged(object sender, SelectionChangedEventArgs e)
+
+        private void Contexts_ValueChanged(object sender, NumberBoxValueChangedEventArgs args)
         {
-            if (Translator.Setting.OverlayWindow.HistoryMax > Translator.Setting.MainWindow.CaptionLogMax)
-                Translator.Setting.OverlayWindow.HistoryMax = Translator.Setting.MainWindow.CaptionLogMax;
-            
-            while (Translator.Caption.LogCards.Count > Translator.Setting.MainWindow.CaptionLogMax)
-                Translator.Caption.LogCards.Dequeue();
+            if (Translator.Setting.DisplaySentences > Translator.Setting.NumContexts)
+                Translator.Setting.DisplaySentences = Translator.Setting.NumContexts;
+        }
+
+        private void DisplaySentences_ValueChanged(object sender, NumberBoxValueChangedEventArgs args)
+        {
+            if (Translator.Setting.DisplaySentences > Translator.Setting.NumContexts)
+                Translator.Setting.NumContexts = Translator.Setting.DisplaySentences;
             Translator.Caption.OnPropertyChanged("DisplayLogCards");
+            Translator.Caption.OnPropertyChanged("OverlayPreviousTranslation");
         }
-        
-        private void OverlayHistoryMax_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (Translator.Setting.OverlayWindow.HistoryMax > Translator.Setting.MainWindow.CaptionLogMax)
-                Translator.Setting.MainWindow.CaptionLogMax = Translator.Setting.OverlayWindow.HistoryMax;
-        }
-        
-        private void ContentTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (ContentTypeBox.SelectedItem == null)
-                return;
-                
-            var item = ContentTypeBox.SelectedItem as ComboBoxItem;
-            if (item == null)
-                return;
-                
-            string contentType = item.Tag as string;
-            if (string.IsNullOrEmpty(contentType))
-                return;
-                
-            switch (contentType)
-            {
-                case "AutoDetection":
-                    Translator.Setting.PromptTemplate = PromptTemplate.AutoDetection;
-                    break;
-                case "General":
-                    Translator.Setting.PromptTemplate = PromptTemplate.General;
-                    break;
-                case "Technical":
-                    Translator.Setting.PromptTemplate = PromptTemplate.Technical;
-                    break;
-                case "Conversation":
-                    Translator.Setting.PromptTemplate = PromptTemplate.Conversation;
-                    break;
-                case "Conference":
-                    Translator.Setting.PromptTemplate = PromptTemplate.Conference;
-                    break;
-                case "Media":
-                    Translator.Setting.PromptTemplate = PromptTemplate.Media;
-                    break;
-                default:
-                    Translator.Setting.PromptTemplate = PromptTemplate.General;
-                    break;
-            }
-        }
-        
+
         private void LiveCaptionsInfo_MouseEnter(object sender, MouseEventArgs e)
         {
             LiveCaptionsInfoFlyout.Show();
@@ -171,7 +104,7 @@ namespace LiveCaptionsTranslator
         {
             LiveCaptionsInfoFlyout.Hide();
         }
-        
+
         private void FrequencyInfo_MouseEnter(object sender, MouseEventArgs e)
         {
             FrequencyInfoFlyout.Show();
@@ -181,7 +114,7 @@ namespace LiveCaptionsTranslator
         {
             FrequencyInfoFlyout.Hide();
         }
-        
+
         private void TranslateAPIInfo_MouseEnter(object sender, MouseEventArgs e)
         {
             TranslateAPIInfoFlyout.Show();
@@ -211,20 +144,41 @@ namespace LiveCaptionsTranslator
         {
             CaptionLogMaxInfoFlyout.Hide();
         }
-        
-        private void ContentTypeInfo_MouseEnter(object sender, MouseEventArgs e)
+
+        private void ContextAwareInfo_MouseEnter(object sender, MouseEventArgs e)
         {
-            ContentTypeInfoFlyout.Show();
+            ContextAwareInfoFlyout.Show();
         }
 
-        private void ContentTypeInfo_MouseLeave(object sender, MouseEventArgs e)
+        private void ContextAwareInfo_MouseLeave(object sender, MouseEventArgs e)
         {
-            ContentTypeInfoFlyout.Hide();
+            ContextAwareInfoFlyout.Hide();
+        }
+
+        private void CheckForFirstUse()
+        {
+            if (Translator.FirstUseFlag)
+                ButtonText.Text = "Hide";
         }
 
         public void LoadAPISetting()
         {
-            var supportedLanguages = Translator.Setting.CurrentAPIConfig.SupportedLanguages;
+            var configType = Translator.Setting[Translator.Setting.ApiName].GetType();
+            var languagesProp = configType.GetProperty(
+                "SupportedLanguages", BindingFlags.Public | BindingFlags.Static);
+
+            // Traverse base classes to find `SupportedLanguages`
+            while (configType != null && languagesProp == null)
+            {
+                configType = configType.BaseType;
+                languagesProp = configType.GetProperty(
+                    "SupportedLanguages", BindingFlags.Public | BindingFlags.Static);
+            }
+            if (languagesProp == null)
+                languagesProp = typeof(TranslateAPIConfig).GetProperty(
+                    "SupportedLanguages", BindingFlags.Public | BindingFlags.Static);
+
+            var supportedLanguages = (Dictionary<string, string>)languagesProp.GetValue(null);
             TargetLangBox.ItemsSource = supportedLanguages.Keys;
 
             string targetLang = Translator.Setting.TargetLanguage;

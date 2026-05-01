@@ -1,18 +1,20 @@
-﻿using System.Windows.Controls;
+﻿using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
-using Wpf.Ui.Controls;
 using Wpf.Ui.Appearance;
+using Wpf.Ui.Controls;
 
-using LiveCaptionsTranslator.utils;
 using LiveCaptionsTranslator.models;
-
+using LiveCaptionsTranslator.utils;
 using TextBlock = System.Windows.Controls.TextBlock;
 
 namespace LiveCaptionsTranslator
 {
     public partial class HistoryPage : Page
     {
+        public const int MIN_HEIGHT = 300;
+
         private int currentPage = 1;
         private int searchPage = 1;
         private int maxPage = 1;
@@ -28,6 +30,7 @@ namespace LiveCaptionsTranslator
             Loaded += async (s, e) =>
             {
                 await LoadHistory();
+                (App.Current.MainWindow as MainWindow)?.AutoHeightAdjust(minHeight: MIN_HEIGHT, maxHeight: MIN_HEIGHT);
                 Translator.TranslationLogged += OnTranslationLogged;
             };
             Unloaded += (s, e) =>
@@ -66,8 +69,8 @@ namespace LiveCaptionsTranslator
             {
                 Title = new TextBlock
                 {
-                    Text = "Do you want to delete all history?", 
-                    FontSize = 18, 
+                    Text = "Do you want to delete all history?",
+                    FontSize = 18,
                     FontWeight = FontWeights.Regular
                 },
                 Content = "This operation cannot be undone!",
@@ -111,7 +114,6 @@ namespace LiveCaptionsTranslator
 
         private async void Export_click(object sender, RoutedEventArgs e)
         {
-
             SaveFileDialog saveFileDialog = new SaveFileDialog
             {
                 Filter = "CSV (*.csv)|*.csv|All file (*.*)|*.*",
@@ -125,11 +127,11 @@ namespace LiveCaptionsTranslator
                 try
                 {
                     await SQLiteHistoryLogger.ExportToCSV(saveFileDialog.FileName);
-                    Snackbar_Show("Saved Success", $"File saved to: {saveFileDialog.FileName}");
+                    SnackbarHost.Show("Saved Success.", $"File saved to: {saveFileDialog.FileName}", SnackbarType.Success);
                 }
                 catch (Exception ex)
                 {
-                    Snackbar_Show("Save Failed", $"File saved faild:{ex.Message}");
+                    SnackbarHost.Show("Save Failed.", $"File saved faild:{ex.Message}", SnackbarType.Error);
                 }
             }
         }
@@ -169,20 +171,7 @@ namespace LiveCaptionsTranslator
                 }
             }
         }
-        
-        private void Snackbar_Show(string title, string message, bool isError = false)
-        {
-            var snackbar = new Snackbar(SnackbarHost)
-            {
-                Title = title,
-                Content = message,
-                Appearance = isError ? ControlAppearance.Danger : ControlAppearance.Light,
-                Timeout = TimeSpan.FromSeconds(2)
-            };
 
-            snackbar.Show();
-        }
-        
         public async Task LoadHistory()
         {
             var data = await SQLiteHistoryLogger.LoadHistoryAsync(currentPage, maxRowPerPage, SearchText);

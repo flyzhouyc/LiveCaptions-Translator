@@ -6,7 +6,6 @@
     xmlns:local="clr-namespace:LiveCaptionsTranslator"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:models="clr-namespace:LiveCaptionsTranslator.models"
     Title="SettingPage"
     JournalEntry.KeepAlive="False"
     mc:Ignorable="d">
@@ -27,9 +26,10 @@
                     <ui:Flyout x:Name="LiveCaptionsInfoFlyout">
                         <TextBlock Width="300" TextWrapping="Wrap">
                             <Run Text="After Windows 11 version 24H2, you can only change the" />
-                            <Run FontWeight="Bold" Text="source language" />
+                            <Run FontWeight="DemiBold" TextDecorations="Underline" Text="Source Language" />
                             <Run Text="in LiveCaptions." />
-                            <Run Text="&#x0A;Note: Please click" />
+                            <Run FontWeight="Bold" Text="&#x0A;&#x0A;Note:" />
+                            <Run Text="Please click" />
                             <Run FontWeight="Bold" Text="&quot;Hide&quot;" />
                             <Run Text="to hide LiveCaptions instead of closing it directly." />
                         </TextBlock>
@@ -133,11 +133,13 @@
                         VerticalAlignment="Center"
                         Text="Target Language" />
                     <ui:Flyout x:Name="TargetLangInfoFlyout">
-                        <TextBlock Width="300" TextWrapping="Wrap">
-                            <Run Text="You can directly edit to customize the language, and it is recommended to follow the" />
+                        <TextBlock Width="350" TextWrapping="Wrap">
+                            <Run FontWeight="DemiBold" TextDecorations="Underline" Text="&quot;There isn’t the target language I expect!&quot;" />
+                            <Run Text="&#x0A;You can directly edit the content of this combobox to customize the language, and it is recommended to follow the" />
                             <Run FontWeight="Bold" Text="BCP 47 language tag." />
-                            <Run Text="&#x0A;Note 1: Google might be failed to run if don't use BCP 47 language tag." />
-                            <Run Text="&#x0A;Note 2: DeepL needs another way to define target language, see the docs." />
+                            <Run FontWeight="Bold" Text="&#x0A;&#x0A;Note:" />
+                            <Run Text="Some of APIs (such as DeepL) needs another way to define target language, see their official docs for more details." />
+                            <Run Text="&#x0A;No need to consider this for included target languages, since we've built in tag mappings. But if your expected language isn't in the list, keep this in mind." />
                         </TextBlock>
                     </ui:Flyout>
                     <Button
@@ -184,70 +186,31 @@
                 <ui:ToggleSwitch
                     Width="100"
                     Height="30"
-                    Margin="0,0,0,0"
                     Padding="10,4,10,7"
                     IsChecked="{Binding MainWindow.LatencyShow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                     OffContent="Off"
                     OnContent="On" />
-            </StackPanel>
-            
-            <!-- 添加内容类型选择器 -->
-            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                    <TextBlock Margin="2.5,0,0,5" Text="Content Type" />
-                    <ui:Flyout x:Name="ContentTypeInfoFlyout">
-                        <TextBlock Width="300" TextWrapping="Wrap">
-                            <Run Text="Choose a content type to optimize translation prompts:" />
-                            <Run Text="&#x0A;- Auto-detection: Automatically detect content type" />
-                            <Run Text="&#x0A;- General: Default prompt for most content" />
-                            <Run Text="&#x0A;- Technical: For programming, software, technical documents" />
-                            <Run Text="&#x0A;- Conversation: For casual dialogues and daily conversations" />
-                            <Run Text="&#x0A;- Conference: For formal speeches, presentations, meetings" />
-                            <Run Text="&#x0A;- Media: For news, articles, or media content" />
-                            <Run Text="&#x0A;&#x0A;Note: Auto-detection will try to choose the best type automatically." />
-                        </TextBlock>
-                    </ui:Flyout>
-                    <Button
-                        x:Name="ContentTypeInfo"
-                        Width="15"
-                        Height="15"
-                        Margin="-5,-3,0,0"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        MouseEnter="ContentTypeInfo_MouseEnter"
-                        MouseLeave="ContentTypeInfo_MouseLeave">
-                        <ui:SymbolIcon Symbol="Info16" />
-                    </Button>
-                </StackPanel>
-                <ComboBox
-                    x:Name="ContentTypeBox"
-                    Width="150"
-                    Height="30"
-                    Padding="10,4,10,7"
-                    FontSize="13.3"
-                    SelectedValue="{Binding PromptTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    SelectionChanged="ContentTypeBox_SelectionChanged">
-                    <ComboBoxItem Content="Auto-detection" Tag="AutoDetection" />
-                    <ComboBoxItem Content="General" Tag="General" />
-                    <ComboBoxItem Content="Technical" Tag="Technical" />
-                    <ComboBoxItem Content="Conversation" Tag="Conversation" />
-                    <ComboBoxItem Content="Conference" Tag="Conference" />
-                    <ComboBoxItem Content="Media" Tag="Media" />
-                </ComboBox>
             </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Column="3" Orientation="Vertical">
             <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                    <TextBlock Margin="2.5,0,0,5" Text="Log Cards" />
+                    <TextBlock Margin="2.5,0,0,5" Text="Contexts" />
                     <ui:Flyout x:Name="CaptionLogMaxInfoFlyout">
                         <TextBlock Width="300" TextWrapping="Wrap">
-                            <Run Text="The number of Log Cards must be" />
+                            <Run FontWeight="Bold" Text="Contexts:" />
+                            <Run Text="Determines the number of context sentences when" />
+                            <Run FontWeight="Bold" Text="Context Aware" />
+                            <Run Text="is enabled." />
+                            <Run FontWeight="Bold" Text="&#x0A;Overlay Sentences:" />
+                            <Run Text="Determines the number of displayed cards when" />
+                            <Run FontWeight="Bold" Text="Log Cards" />
+                            <Run Text="is enabled, as well as the max number of sentences displayed in the Overlay Window." />
+                            <Run FontWeight="Bold" Text="&#x0A;&#x0A;Note:" />
+                            <Run Text="Contexts must be" />
                             <Run FontWeight="Bold" Text="greater than or equal" />
-                            <Run Text="to the number of Overlay Sentences." />
-                            <Run Text="&#x0A;If not met, the program will automatically adjust them." />
+                            <Run Text="Display Sentences. If not met, the program will automatically adjust them." />
                         </TextBlock>
                     </ui:Flyout>
                     <Button
@@ -263,46 +226,72 @@
                         <ui:SymbolIcon Symbol="Info16" />
                     </Button>
                 </StackPanel>
-                <ComboBox
-                    x:Name="CaptionLogMax"
+                <ui:NumberBox
                     Width="135"
                     Height="30"
                     Padding="10,4,10,7"
                     FontSize="13.3"
-                    SelectedValue="{Binding MainWindow.CaptionLogMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    SelectedValuePath="Content"
-                    SelectionChanged="CaptionLogMax_SelectionChanged">
-                    <ComboBoxItem Content="1" />
-                    <ComboBoxItem Content="2" />
-                    <ComboBoxItem Content="3" />
-                    <ComboBoxItem Content="4" />
-                    <ComboBoxItem Content="5" />
-                    <ComboBoxItem Content="6" />
-                </ComboBox>
+                    ClearButtonEnabled="False"
+                    AcceptsExpression="False"
+                    SpinButtonPlacementMode="Inline"
+                    Maximum="10"
+                    Minimum="1"
+                    LargeChange="1"
+                    SmallChange="1"
+                    Value="{Binding NumContexts, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    ValueChanged="Contexts_ValueChanged" />
             </StackPanel>
 
             <StackPanel Margin="15,10,0,0" Orientation="Vertical">
-                <TextBlock Margin="2.5,0,0,5" Text="Overlay Sentences" />
-                <ComboBox
-                    x:Name="OverlayHistoryMax"
+                <TextBlock Margin="2.5,0,0,5" Text="Display Sentences" />
+                <ui:NumberBox
                     Width="135"
                     Height="30"
                     Padding="10,4,10,7"
                     FontSize="13.3"
-                    SelectedValue="{Binding OverlayWindow.HistoryMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    SelectedValuePath="Content"
-                    SelectionChanged="OverlayHistoryMax_SelectionChanged">
-                    <ComboBoxItem Content="0" />
-                    <ComboBoxItem Content="1" />
-                    <ComboBoxItem Content="2" />
-                    <ComboBoxItem Content="3" />
-                    <ComboBoxItem Content="4" />
-                    <ComboBoxItem Content="5" />
-                    <ComboBoxItem Content="6" />
-                </ComboBox>
+                    ClearButtonEnabled="False"
+                    AcceptsExpression="False"
+                    SpinButtonPlacementMode="Inline"
+                    Maximum="6"
+                    Minimum="0"
+                    LargeChange="1"
+                    SmallChange="1"
+                    Value="{Binding DisplaySentences, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    ValueChanged="DisplaySentences_ValueChanged" />
             </StackPanel>
         </StackPanel>
 
-
+        <StackPanel Grid.Column="4" Orientation="Vertical">
+            <StackPanel Margin="15,0,0,0" Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Context Aware" />
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <ui:ToggleSwitch
+                        Width="90"
+                        Height="30"
+                        Padding="10,4,10,7"
+                        IsChecked="{Binding ContextAware, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        OffContent="Off"
+                        OnContent="On" />
+                    <Button
+                        x:Name="ContextAwareInfo"
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="ContextAwareInfo_MouseEnter"
+                        MouseLeave="ContextAwareInfo_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                    <ui:Flyout x:Name="ContextAwareInfoFlyout">
+                        <TextBlock Width="300" TextWrapping="Wrap">
+                            <Run Text="Translate in context." />
+                            <Run Text="&#x0A;It can improve translation accuracy, but will consume more tokens." />
+                        </TextBlock>
+                    </ui:Flyout>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </Page>

@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="CaptionPage"
+    JournalEntry.KeepAlive="True"
     mc:Ignorable="d">
 
     <Grid Margin="5,5,15,5">
@@ -19,8 +20,6 @@
             <Style x:Key="CaptionBlockStyle" TargetType="TextBlock">
                 <Setter Property="TextWrapping" Value="Wrap" />
                 <Setter Property="VerticalAlignment" Value="Stretch" />
-                <!-- 性能优化：启用缓存 -->
-                <Setter Property="CacheMode" Value="BitmapCache" />
             </Style>
         </Grid.Resources>
 
@@ -57,7 +56,7 @@
         </ui:Card>
 
         <ui:Card
-            x:Name="CaptionLogCard"
+            x:Name="LogCards"
             Grid.Row="2"
             Margin="0,0,0,5"
             Padding="8"
@@ -65,18 +64,10 @@
             Background="Transparent"
             BorderBrush="#00000000">
             <ItemsControl
-                x:Name="CaptionLogItems"
+                x:Name="LogCardItems"
                 MinHeight="50"
                 ItemsSource="{Binding DisplayLogCards, UpdateSourceTrigger=PropertyChanged}"
-                VirtualizingPanel.IsVirtualizing="True"
-                VirtualizingPanel.VirtualizationMode="Recycling"
-                VirtualizingPanel.CacheLength="2"
-                VirtualizingPanel.CacheLengthUnit="Page">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <VirtualizingStackPanel />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
+                VirtualizingPanel.IsVirtualizing="True">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Border
@@ -125,5 +116,6 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ui:Card>
+
     </Grid>
 </Page>

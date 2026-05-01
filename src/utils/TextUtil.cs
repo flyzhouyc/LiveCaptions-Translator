@@ -1,5 +1,4 @@
 ﻿using System.Text;
-using System.Text.RegularExpressions;
 
 namespace LiveCaptionsTranslator.utils
 {
@@ -7,11 +6,13 @@ namespace LiveCaptionsTranslator.utils
     {
         public static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
         public static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
-        
+
         public const int SHORT_THRESHOLD = 10;
         public const int MEDIUM_THRESHOLD = 40;
         public const int LONG_THRESHOLD = 160;
         public const int VERYLONG_THRESHOLD = 220;
+
+        public const double SIM_THRESHOLD = 0.6;
 
         public static string ShortenDisplaySentence(string text, int maxByteLength)
         {
@@ -45,9 +46,15 @@ namespace LiveCaptionsTranslator.utils
 
         public static bool isCJChar(char ch)
         {
-            return (ch >= '\u4E00' && ch <= '\u9FFF') ||
-                   (ch >= '\u3400' && ch <= '\u4DBF') ||
-                   (ch >= '\u3040' && ch <= '\u30FF');
+            return
+                (ch >= '\u4E00' && ch <= '\u9FFF') ||   // CJ Unified Ideographs
+                (ch >= '\u3400' && ch <= '\u4DBF') ||   // CJ Unified Ideographs Extension A
+                (ch >= '\u3000' && ch <= '\u303F') ||   // CJ Symbols and Punctuation
+                (ch >= '\u3040' && ch <= '\u309F') ||   // Hiragana
+                (ch >= '\u30A0' && ch <= '\u30FF') ||   // Katakana
+                (ch >= '\u31F0' && ch <= '\u31FF') ||   // Katakana Phonetic Extensions
+                (ch >= '\u3200' && ch <= '\u32FF') ||   // Enclosed CJ Letters and Months
+                (ch >= '\u3300' && ch <= '\u33FF');     // CJ Unit Symbols
         }
 
         public static double Similarity(string text1, string text2)
@@ -95,11 +102,11 @@ namespace LiveCaptionsTranslator.utils
 
         public static string NormalizeUrl(string url)
         {
-            var protocolMatch = Regex.Match(url, @"^(https?:\/\/)");
+            var protocolMatch = RegexPatterns.HttpPrefix().Match(url);
             string protocol = protocolMatch.Success ? protocolMatch.Value : "";
 
             string rest = url.Substring(protocol.Length);
-            rest = Regex.Replace(rest, @"\/{2,}", "/");
+            rest = RegexPatterns.MultipleSlashes().Replace(rest, "/");
             rest = rest.TrimEnd('/');
 
             return protocol + rest;

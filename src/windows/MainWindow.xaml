@@ -8,14 +8,14 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="LiveCaptions Translator"
     Width="750"
-    Height="167"
+    Height="170"
     MinWidth="750"
-    MinHeight="167"
+    MinHeight="170"
     Background="Transparent"
     ExtendsContentIntoTitleBar="True"
-    LocationChanged="MainWindow_BoundsChanged"
+    LocationChanged="MainWindow_LocationChanged"
     ResizeMode="CanResizeWithGrip"
-    SizeChanged="MainWindow_BoundsChanged"
+    SizeChanged="MainWindow_SizeChanged"
     Topmost="True"
     WindowBackdropType="Mica"
     WindowStartupLocation="Manual"
@@ -39,31 +39,32 @@
                 <ui:TitleBar.TrailingContent>
                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                         <ui:Button
-                            x:Name="captionLog"
+                            x:Name="CaptionLogButton"
                             Margin="0,0,5,0"
                             Appearance="Transparent"
-                            Click="CaptionLog_OnClickButton_Click"
+                            Click="CaptionLogButton_Click"
                             Icon="{ui:SymbolIcon History16,
                                                  Filled=False}"
-                            ToolTip="Log Cards of Captions" />
+                            ToolTip="Log Cards of Captions"
+                            Visibility="Collapsed" />
                         <ui:Button
-                            x:Name="logOnly"
+                            x:Name="LogOnlyButton"
                             Margin="0,0,5,0"
                             Appearance="Transparent"
-                            Click="LogOnly_OnClickButton_Click"
+                            Click="LogOnlyButton_Click"
                             Icon="{ui:SymbolIcon Pause16,
                                                  Filled=False}"
                             ToolTip="Pause Translation (Log Only)" />
                         <ui:Button
-                            x:Name="overlayMode"
+                            x:Name="OverlayModeButton"
                             Margin="0,0,5,0"
                             Appearance="Transparent"
                             Click="OverlayModeButton_Click"
-                            Icon="{ui:SymbolIcon WindowNew24,
+                            Icon="{ui:SymbolIcon ClosedCaptionOff24,
                                                  Filled=False}"
                             ToolTip="Overlay Window" />
                         <ui:Button
-                            x:Name="topmost"
+                            x:Name="TopmostButton"
                             Margin="0,0,5,0"
                             Appearance="Transparent"
                             Click="TopmostButton_Click"
@@ -113,6 +114,15 @@
                         NavigationCacheMode="Required"
                         TargetPageType="{x:Type local:InfoPage}" />
                 </ui:NavigationView.MenuItems>
+
+                <ui:NavigationView.ContentOverlay>
+                    <Grid>
+                        <ui:SnackbarPresenter
+                            x:Name="snackbarHost"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom" />
+                    </Grid>
+                </ui:NavigationView.ContentOverlay>
             </ui:NavigationView>
         </Grid>
         <ContentPresenter

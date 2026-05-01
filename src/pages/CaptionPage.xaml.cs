@@ -10,16 +10,28 @@ namespace LiveCaptionsTranslator
 {
     public partial class CaptionPage : Page
     {
-        public static CaptionPage? Instance { get; set; } = null;
+        public const int CARD_HEIGHT = 110;
+
+        private static CaptionPage instance;
+        public static CaptionPage Instance => instance;
 
         public CaptionPage()
         {
             InitializeComponent();
             DataContext = Translator.Caption;
-            Instance = this;
+            instance = this;
 
-            Loaded += (s, e) => Translator.Caption.PropertyChanged += TranslatedChanged;
-            Unloaded += (s, e) => Translator.Caption.PropertyChanged -= TranslatedChanged;
+            Loaded += (s, e) =>
+            {
+                AutoHeight();
+                (App.Current.MainWindow as MainWindow).CaptionLogButton.Visibility = Visibility.Visible;
+                Translator.Caption.PropertyChanged += TranslatedChanged;
+            };
+            Unloaded += (s, e) =>
+            {
+                (App.Current.MainWindow as MainWindow).CaptionLogButton.Visibility = Visibility.Collapsed;
+                Translator.Caption.PropertyChanged -= TranslatedChanged;
+            };
 
             CollapseTranslatedCaption(Translator.Setting.MainWindow.CaptionLogEnabled);
         }
@@ -31,14 +43,13 @@ namespace LiveCaptionsTranslator
                 try
                 {
                     Clipboard.SetText(textBlock.Text);
-                    textBlock.ToolTip = "Copied!";
+                    SnackbarHost.Show("Copied.", textBlock.Text, SnackbarType.Info, 100);
                 }
                 catch
                 {
-                    textBlock.ToolTip = "Error to Copy";
+                    SnackbarHost.Show("Copy Failed.", string.Empty, SnackbarType.Error, 100);
                 }
                 await Task.Delay(500);
-                textBlock.ToolTip = "Click to Copy";
             }
         }
 
@@ -70,13 +81,25 @@ namespace LiveCaptionsTranslator
             if (isCollapsed)
             {
                 TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("Auto");
-                CaptionLogCard.Visibility = Visibility.Visible;
+                LogCards.Visibility = Visibility.Visible;
             }
             else
             {
                 TranslatedCaption_Row.Height = (GridLength)converter.ConvertFromString("*");
-                CaptionLogCard.Visibility = Visibility.Collapsed;
+                LogCards.Visibility = Visibility.Collapsed;
             }
+        }
+
+        public void AutoHeight()
+        {
+            if (Translator.Setting.MainWindow.CaptionLogEnabled)
+                (App.Current.MainWindow as MainWindow).AutoHeightAdjust(
+                    minHeight: CARD_HEIGHT * (Translator.Setting.DisplaySentences + 1),
+                    maxHeight: CARD_HEIGHT * (Translator.Setting.DisplaySentences + 1));
+            else
+                (App.Current.MainWindow as MainWindow).AutoHeightAdjust(
+                    minHeight: (int)App.Current.MainWindow.MinHeight,
+                    maxHeight: (int)App.Current.MainWindow.MinHeight);
         }
     }
 }
