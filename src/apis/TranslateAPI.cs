@@ -179,7 +179,7 @@ namespace LiveCaptionsTranslator.apis
             string apiUrl = TextUtil.NormalizeUrl(config.ApiUrl + "/api/chat");
 
             var messages = BuildLLMMessages(language, text);
-            
+
             var requestData = LLMRequestDataFactory.Create("Ollama", config.ModelName, messages, config.Temperature);
             requestData.keep_alive = config.Keep_alive;
             string jsonContent = JsonSerializer.Serialize(requestData, requestData.GetType());

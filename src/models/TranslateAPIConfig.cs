@@ -92,7 +92,7 @@ namespace LiveCaptionsTranslator.models
         private string apiUrl = "http://localhost:11434";
 
         private int keepAlive = 600;
-        
+
         public int Keep_alive
         {
             get => keepAlive;
