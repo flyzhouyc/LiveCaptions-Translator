@@ -34,6 +34,8 @@ namespace LiveCaptionsTranslator.utils
                 splits[i] = splits[i].Trim();
                 if (i == splits.Length - 1)
                     continue;
+                if (splits[i].Length == 0)
+                    continue;
 
                 char lastChar = splits[i][^1];
                 if (Encoding.UTF8.GetByteCount(splits[i]) >= byteThreshold)

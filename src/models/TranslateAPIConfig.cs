@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 
+using LiveCaptionsTranslator.utils;
+
 namespace LiveCaptionsTranslator.models
 {
     public class TranslateAPIConfig : INotifyPropertyChanged
@@ -35,7 +37,8 @@ namespace LiveCaptionsTranslator.models
         public void OnPropertyChanged([CallerMemberName] string propName = "")
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            Translator.Setting?.Save();
+            if (Translator.Setting != null)
+                BatchSettingsSave.AddChange(propName, this);
         }
     }
 
@@ -141,6 +144,10 @@ namespace LiveCaptionsTranslator.models
         private string apiKey = "";
         private string apiUrl = "";
 
+        // Per-session cache for the first compatible OpenAI request payload format.
+        [JsonIgnore]
+        public int FallbackIndex { get; set; }
+
         public string ApiKey
         {
             get => apiKey;
@@ -170,7 +177,7 @@ namespace LiveCaptionsTranslator.models
             set
             {
                 apiKey = value;
-                OnPropertyChanged();
+                OnPropertyChanged("ApiKey");
             }
         }
     }

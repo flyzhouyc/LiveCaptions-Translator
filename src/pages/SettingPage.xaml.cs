@@ -28,7 +28,6 @@ namespace LiveCaptionsTranslator
             };
 
             TranslateAPIBox.ItemsSource = Translator.Setting?.Configs.Keys;
-            TranslateAPIBox.SelectedIndex = 0;
 
             LoadAPISetting();
         }

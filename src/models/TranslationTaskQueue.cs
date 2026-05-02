@@ -6,6 +6,7 @@ namespace LiveCaptionsTranslator.models
     {
         private const int MaxQueuedTasks = 8;
         private readonly object _lock = new object();
+        private readonly SemaphoreSlim completionLock = new(1, 1);
         private readonly List<TranslationTask> tasks;
 
         private (string translatedText, bool isChoke) output;
@@ -57,7 +58,8 @@ namespace LiveCaptionsTranslator.models
                             return;
                         }
 
-                        await OnTaskCompleted(newTranslationTask);
+                        var taskOutput = await task;
+                        await OnTaskCompleted(newTranslationTask, taskOutput);
                     }
                     catch (Exception ex)
                     {
@@ -74,7 +76,8 @@ namespace LiveCaptionsTranslator.models
             ).Unwrap();
         }
 
-        private async Task OnTaskCompleted(TranslationTask translationTask)
+        private async Task OnTaskCompleted(
+            TranslationTask translationTask, (string translatedText, bool isChoke) taskOutput)
         {
             (string translatedText, bool isChoke) completedOutput;
             lock (_lock)
@@ -85,19 +88,26 @@ namespace LiveCaptionsTranslator.models
 
                 for (int i = 0; i < index; i++)
                     tasks[i].Cancel();
-                for (int i = index; i >= 0; i--)
-                    tasks.RemoveAt(i);
+                tasks.RemoveRange(0, index + 1);
 
-                output = translationTask.Task.Result;
+                output = taskOutput;
                 completedOutput = output;
             }
 
             var translatedText = completedOutput.translatedText;
 
-            bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
-            if (!isOverwrite)
-                await Translator.AddContexts();
-            await Translator.Log(translationTask.OriginalText, translatedText, isOverwrite);
+            await completionLock.WaitAsync();
+            try
+            {
+                bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
+                if (!isOverwrite)
+                    await Translator.AddContexts();
+                await Translator.Log(translationTask.OriginalText, translatedText, isOverwrite);
+            }
+            finally
+            {
+                completionLock.Release();
+            }
         }
     }
 

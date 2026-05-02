@@ -31,10 +31,14 @@ namespace LiveCaptionsTranslator
 
             double screenWidth = SystemParameters.PrimaryScreenWidth;
             double screenHeight = SystemParameters.PrimaryScreenHeight;
+            double virtualScreenLeft = SystemParameters.VirtualScreenLeft;
+            double virtualScreenTop = SystemParameters.VirtualScreenTop;
+            double virtualScreenRight = virtualScreenLeft + SystemParameters.VirtualScreenWidth;
+            double virtualScreenBottom = virtualScreenTop + SystemParameters.VirtualScreenHeight;
 
             var windowState = WindowHandler.LoadState(this, Translator.Setting);
-            if (windowState.Left <= 0 || windowState.Left >= screenWidth ||
-                windowState.Top <= 0 || windowState.Top >= screenHeight)
+            if (windowState.Left < virtualScreenLeft || windowState.Left >= virtualScreenRight ||
+                windowState.Top < virtualScreenTop || windowState.Top >= virtualScreenBottom)
             {
                 WindowHandler.RestoreState(this, new Rect(
                     (screenWidth - 775) / 2, screenHeight * 3 / 4 - 167, 775, 167));
@@ -71,10 +75,14 @@ namespace LiveCaptionsTranslator
 
                 double screenWidth = SystemParameters.PrimaryScreenWidth;
                 double screenHeight = SystemParameters.PrimaryScreenHeight;
+                double virtualScreenLeft = SystemParameters.VirtualScreenLeft;
+                double virtualScreenTop = SystemParameters.VirtualScreenTop;
+                double virtualScreenRight = virtualScreenLeft + SystemParameters.VirtualScreenWidth;
+                double virtualScreenBottom = virtualScreenTop + SystemParameters.VirtualScreenHeight;
 
                 var windowState = WindowHandler.LoadState(overlayWindow, Translator.Setting);
-                if (windowState.Left <= 0 || windowState.Left >= screenWidth ||
-                    windowState.Top <= 0 || windowState.Top >= screenHeight)
+                if (windowState.Left < virtualScreenLeft || windowState.Left >= virtualScreenRight ||
+                    windowState.Top < virtualScreenTop || windowState.Top >= virtualScreenBottom)
                 {
                     WindowHandler.RestoreState(overlayWindow, new Rect(
                         (screenWidth - 650) / 2, screenHeight * 5 / 6 - 135, 650, 135));

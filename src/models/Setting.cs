@@ -332,7 +332,8 @@ namespace LiveCaptionsTranslator.models
         public void OnPropertyChanged([CallerMemberName] string? propName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            Translator.Setting?.Save();
+            if (Translator.Setting != null)
+                BatchSettingsSave.AddChange(propName ?? string.Empty, this);
         }
 
         public static bool IsConfigExist()

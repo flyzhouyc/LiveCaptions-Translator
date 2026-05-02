@@ -109,6 +109,15 @@ namespace LiveCaptionsTranslator
 
             ShutdownTokenSource.Cancel();
 
+            try
+            {
+                BatchSettingsSave.CommitAllPendingChangesAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("Failed to flush pending setting changes during shutdown.", ex);
+            }
+
             if (Translator.Window != null)
             {
                 LiveCaptionsHandler.RestoreLiveCaptions(Translator.Window);

@@ -36,17 +36,20 @@ namespace LiveCaptionsTranslator.utils
         {
             try
             {
-                Dictionary<string, object> changesToApply;
-
                 lock (batchLock)
                 {
-                    changesToApply = new Dictionary<string, object>(pendingChanges);
+                    if (pendingChanges.Count == 0)
+                    {
+                        saveScheduled = false;
+                        return;
+                    }
+
                     pendingChanges.Clear();
                     saveScheduled = false;
                 }
 
-                if (changesToApply.Count > 0 && Translator.Setting != null)
-                    _ = Task.Run(async () => await CommitChangesAsync(changesToApply));
+                if (Translator.Setting != null)
+                    _ = Task.Run(CommitChangesAsync);
             }
             catch (Exception ex)
             {
@@ -54,23 +57,10 @@ namespace LiveCaptionsTranslator.utils
             }
         }
 
-        public static async Task CommitChangesAsync(Dictionary<string, object>? changes = null)
+        public static async Task CommitChangesAsync()
         {
             if (Translator.Setting == null)
                 return;
-
-            if (changes == null)
-            {
-                lock (batchLock)
-                {
-                    if (pendingChanges.Count == 0)
-                        return;
-
-                    changes = new Dictionary<string, object>(pendingChanges);
-                    pendingChanges.Clear();
-                    saveScheduled = false;
-                }
-            }
 
             try
             {
@@ -85,7 +75,25 @@ namespace LiveCaptionsTranslator.utils
 
         public static async Task CommitAllPendingChangesAsync()
         {
-            await CommitChangesAsync();
+            if (Translator.Setting == null)
+                return;
+
+            lock (batchLock)
+            {
+                pendingChanges.Clear();
+                saveScheduled = false;
+                batchTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            }
+
+            try
+            {
+                await saveLocker.WaitAsync();
+                await Task.Run(() => Translator.Setting.Save());
+            }
+            finally
+            {
+                saveLocker.Release();
+            }
         }
     }
 }

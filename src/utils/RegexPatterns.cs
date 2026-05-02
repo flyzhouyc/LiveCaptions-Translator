@@ -32,7 +32,7 @@ namespace LiveCaptionsTranslator.utils
         [GeneratedRegex(@"\/{2,}")]
         public static partial Regex MultipleSlashes();
 
-        [GeneratedRegex(@"<think>.*?<\/think>", RegexOptions.Singleline)]
+        [GeneratedRegex(@"<think\b[^>]*>.*?<\/think\s*>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
         public static partial Regex ModelThinking();
 
         [GeneratedRegex(@"[^0-9.]")]

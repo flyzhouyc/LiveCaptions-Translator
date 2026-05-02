@@ -49,7 +49,6 @@ namespace LiveCaptionsTranslator.apis
         {
             Timeout = TimeSpan.FromSeconds(8)
         };
-        private static int openai_fallback_index = 0;
         private const string TimeoutFailureMessage =
             "[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
             "please use a faster API or check network connection.";
@@ -118,9 +117,10 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
+                int fallbackIndex = config.FallbackIndex;
                 while (true)
                 {
-                    var requestData = LLMRequestDataFactory.Create(openai_fallback_index,
+                    var requestData = LLMRequestDataFactory.Create(fallbackIndex,
                         config.ModelName, messages, config.Temperature);
                     string jsonContent = JsonSerializer.Serialize(requestData, requestData.GetType());
                     var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
@@ -130,15 +130,17 @@ namespace LiveCaptionsTranslator.apis
                     if (response.StatusCode != HttpStatusCode.BadRequest &&
                         response.StatusCode != HttpStatusCode.UnprocessableEntity)
                         break;
-                    Thread.Sleep(15);
+                    await Task.Delay(15, token);
 
-                    openai_fallback_index++;
-                    if (openai_fallback_index >= LLMRequestDataFactory.FallbackCount)
+                    fallbackIndex++;
+                    if (fallbackIndex >= LLMRequestDataFactory.FallbackCount)
                     {
-                        openai_fallback_index = 0;
+                        fallbackIndex = 0;
                         break;
                     }
                 }
+
+                config.FallbackIndex = fallbackIndex;
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
@@ -186,7 +188,7 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(apiUrl, content, token);
+                response = await PostAsync(apiUrl, content, token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
@@ -497,7 +499,7 @@ namespace LiveCaptionsTranslator.apis
             string language = YoudaoConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
 
-            string salt = DateTime.Now.Millisecond.ToString();
+            string salt = Guid.NewGuid().ToString("N");
             string sign = BitConverter.ToString(
                 MD5.Create().ComputeHash(
                     Encoding.UTF8.GetBytes($"{config.AppKey}{text}{salt}{config.AppSecret}"))).Replace("-", "").ToLower();
@@ -517,7 +519,7 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(config.ApiUrl, content, token);
+                response = await PostAsync(config.ApiUrl, content, token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
@@ -606,7 +608,7 @@ namespace LiveCaptionsTranslator.apis
             string language = BaiduConfig.SupportedLanguages.TryGetValue(
                 Translator.Setting.TargetLanguage, out var langValue) ? langValue : Translator.Setting.TargetLanguage;
 
-            string salt = DateTime.Now.Millisecond.ToString();
+            string salt = Guid.NewGuid().ToString("N");
             string sign = BitConverter.ToString(
                 MD5.Create().ComputeHash(
                     Encoding.UTF8.GetBytes($"{config.AppId}{text}{salt}{config.AppSecret}"))).Replace("-", "").ToLower();
@@ -626,7 +628,7 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(config.ApiUrl, content, token);
+                response = await PostAsync(config.ApiUrl, content, token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
@@ -683,7 +685,7 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                response = await client.PostAsync(apiUrl, content, token);
+                response = await PostAsync(apiUrl, content, token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {

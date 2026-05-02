@@ -37,15 +37,23 @@ namespace LiveCaptionsTranslator
 
         static Translator()
         {
-            window = LiveCaptionsHandler.LaunchLiveCaptions();
-            if (window != null)
+            try
             {
-                LiveCaptionsHandler.FixLiveCaptions(window);
-                LiveCaptionsHandler.HideLiveCaptions(window);
+                window = LiveCaptionsHandler.LaunchLiveCaptions();
+                if (window != null)
+                {
+                    LiveCaptionsHandler.FixLiveCaptions(window);
+                    LiveCaptionsHandler.HideLiveCaptions(window);
+                }
+                else
+                {
+                    AppLogger.Warning("LiveCaptions window was not found during startup.");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                AppLogger.Warning("LiveCaptions window was not found during startup.");
+                window = null;
+                AppLogger.Warning("LiveCaptions failed to start during startup; it will be retried by TranslateLoop.", ex);
             }
 
             if (!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), models.Setting.FILENAME)))
@@ -330,7 +338,10 @@ namespace LiveCaptionsTranslator
                 if (Setting.ContextAware && !TranslateAPI.IsLLMBased)
                 {
                     translatedText = await TranslateAPI.TranslateFunction($"{Caption.AwareContextsCaption} 🔤 {text} 🔤", token);
-                    translatedText = RegexPatterns.TargetSentence().Match(translatedText).Groups[1].Value;
+                    var match = RegexPatterns.TargetSentence().Match(translatedText);
+                    translatedText = match.Success
+                        ? match.Groups[1].Value
+                        : translatedText.Replace("🔤", string.Empty).Trim();
                 }
                 else
                 {

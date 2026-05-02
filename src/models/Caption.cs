@@ -169,7 +169,7 @@ namespace LiveCaptionsTranslator.models
                 prev = RegexPatterns.NoticePrefix().Replace(prev, "");
             if (!string.IsNullOrEmpty(prev) && Array.IndexOf(TextUtil.PUNC_EOS, prev[^1]) == -1)
                 prev += TextUtil.isCJChar(prev[^1]) ? "。" : ".";
-            if (!string.IsNullOrEmpty(prev) && Encoding.UTF8.GetByteCount(prev[^1].ToString()) < 2)
+            if (!string.IsNullOrEmpty(prev) && char.IsAscii(prev[^1]))
                 prev += " ";
             return prev;
         }
