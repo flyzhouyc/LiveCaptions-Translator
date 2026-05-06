@@ -8,7 +8,7 @@ namespace LiveCaptionsTranslator.models
         public List<BaseLLMConfig.Message> messages { get; set; } = messages;
         public double temperature { get; set; } = temperature;
 
-        public int max_tokens { get; set; } = 128;
+        public int max_completion_tokens { get; set; } = 128;
         public bool stream { get; set; } = false;
         public int keep_alive { get; set; } = 600;
     }
@@ -75,12 +75,7 @@ namespace LiveCaptionsTranslator.models
     public class OpenAIRequestData(string model, List<BaseLLMConfig.Message> messages, double temperature)
         : BaseLLMRequestData(model, messages, temperature)
     {
-        // Supported Platform: OpenAI, Silicon Flow (For reasoning models)
-        public class Reasoning
-        {
-            public string effort { get; set; } = "low";
-        }
-        public Reasoning reasoning { get; set; } = new();
+        // Supported Platform: OpenAI
     }
 
     public class XAIRequestData(string model, List<BaseLLMConfig.Message> messages, double temperature)
