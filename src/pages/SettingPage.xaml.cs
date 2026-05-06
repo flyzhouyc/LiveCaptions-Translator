@@ -1,10 +1,11 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Wpf.Ui.Appearance;
 
 using LiveCaptionsTranslator.models;
+using LiveCaptionsTranslator.apis;
 using LiveCaptionsTranslator.utils;
 using Wpf.Ui.Controls;
 
@@ -156,6 +157,21 @@ namespace LiveCaptionsTranslator
         private void ContextAwareInfo_MouseLeave(object sender, MouseEventArgs e)
         {
             ContextAwareInfoFlyout.Hide();
+        }
+
+        private void ProxyInfo_MouseEnter(object sender, MouseEventArgs e)
+        {
+            ProxyInfoFlyout.Show();
+        }
+
+        private void ProxyInfo_MouseLeave(object sender, MouseEventArgs e)
+        {
+            ProxyInfoFlyout.Hide();
+        }
+
+        private void ProxyApplyButton_Click(object sender, RoutedEventArgs e)
+        {
+            TranslateAPI.RecreateHttpClient();
         }
 
         private void CheckForFirstUse()
