@@ -47,7 +47,7 @@ namespace LiveCaptionsTranslator.apis
 
         private static readonly HttpClient client = new HttpClient()
         {
-            Timeout = TimeSpan.FromSeconds(8)
+            Timeout = TimeSpan.FromSeconds(30)
         };
         private const string TimeoutFailureMessage =
             "[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
@@ -117,30 +117,12 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                int fallbackIndex = config.FallbackIndex;
-                while (true)
-                {
-                    var requestData = LLMRequestDataFactory.Create(fallbackIndex,
-                        config.ModelName, messages, config.Temperature);
-                    string jsonContent = JsonSerializer.Serialize(requestData, requestData.GetType());
-                    var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                var requestData = new BaseLLMRequestData(config.ModelName, messages, config.Temperature);
+                string jsonContent = JsonSerializer.Serialize(requestData);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                    response = await PostAsync(TextUtil.NormalizeUrl(config.ApiUrl), content, token,
-                        $"Bearer {config.ApiKey}");
-                    if (response.StatusCode != HttpStatusCode.BadRequest &&
-                        response.StatusCode != HttpStatusCode.UnprocessableEntity)
-                        break;
-                    await Task.Delay(15, token);
-
-                    fallbackIndex++;
-                    if (fallbackIndex >= LLMRequestDataFactory.FallbackCount)
-                    {
-                        fallbackIndex = 0;
-                        break;
-                    }
-                }
-
-                config.FallbackIndex = fallbackIndex;
+                response = await PostAsync(TextUtil.NormalizeUrl(config.ApiUrl), content, token,
+                    $"Bearer {config.ApiKey}");
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
