@@ -26,6 +26,7 @@ namespace LiveCaptionsTranslator.models
         private string targetLanguage;
         private string prompt;
         private string? ignoredUpdateVersion;
+        private string proxyUrl = "";
 
         private MainWindowState mainWindowState;
         private OverlayWindowState overlayWindowState;
@@ -106,6 +107,16 @@ namespace LiveCaptionsTranslator.models
             {
                 ignoredUpdateVersion = value;
                 OnPropertyChanged("IgnoredUpdateVersion");
+            }
+        }
+
+        public string ProxyUrl
+        {
+            get => proxyUrl;
+            set
+            {
+                proxyUrl = value ?? "";
+                OnPropertyChanged("ProxyUrl");
             }
         }
 
