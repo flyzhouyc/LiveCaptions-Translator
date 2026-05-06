@@ -332,7 +332,7 @@
                 Text="{Binding ProxyUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <ui:Button
                 x:Name="ProxyApplyButton"
-                Width="60"
+                Width="61"
                 Height="30"
                 Margin="8,0,0,0"
                 Padding="11,4,11,4"
