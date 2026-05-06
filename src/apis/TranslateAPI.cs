@@ -45,10 +45,31 @@ namespace LiveCaptionsTranslator.apis
         public static bool IsLLMBased => LLM_BASED_APIS.Contains(Translator.Setting.ApiName);
         public static string Prompt => Translator.Setting.Prompt;
 
-        private static readonly HttpClient client = new HttpClient()
+        private static HttpClient client = new HttpClient()
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
+
+        public static void RecreateHttpClient()
+        {
+            var proxyUrl = Translator.Setting?.ProxyUrl;
+            HttpMessageHandler handler;
+            if (!string.IsNullOrWhiteSpace(proxyUrl))
+            {
+                handler = new SocketsHttpHandler
+                {
+                    Proxy = new WebProxy(proxyUrl),
+                    UseProxy = true
+                };
+            }
+            else
+            {
+                handler = new SocketsHttpHandler { UseProxy = false };
+            }
+            var oldClient = client;
+            client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+            oldClient.Dispose();
+        }
         private const string TimeoutFailureMessage =
             "[ERROR] Translation Failed: The request was canceled due to timeout (> 8 seconds), " +
             "please use a faster API or check network connection.";
