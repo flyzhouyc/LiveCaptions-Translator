@@ -117,7 +117,14 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                var requestData = new BaseLLMRequestData(config.ModelName, messages, config.Temperature);
+                var requestData = new
+                {
+                    model = config.ModelName,
+                    messages,
+                    temperature = config.Temperature,
+                    max_completion_tokens = 128,
+                    stream = false
+                };
                 string jsonContent = JsonSerializer.Serialize(requestData);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
