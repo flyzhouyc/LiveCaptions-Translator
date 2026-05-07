@@ -121,6 +121,26 @@ namespace LiveCaptionsTranslator.models
             }
         }
 
+        // #5 fix: Replace the last context entry (for overwrite/update scenarios)
+        public void UpdateLastContext(TranslationHistoryEntry entry)
+        {
+            lock (contextsLock)
+            {
+                if (contexts.Count == 0)
+                {
+                    contexts.Enqueue(entry);
+                    return;
+                }
+
+                // Rebuild queue with last entry replaced
+                var items = contexts.ToArray();
+                contexts.Clear();
+                for (int i = 0; i < items.Length - 1; i++)
+                    contexts.Enqueue(items[i]);
+                contexts.Enqueue(entry);
+            }
+        }
+
         public void ClearContexts()
         {
             lock (contextsLock)

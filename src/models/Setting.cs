@@ -26,6 +26,7 @@ namespace LiveCaptionsTranslator.models
         private string targetLanguage;
         private string prompt;
         private string? ignoredUpdateVersion;
+        private string proxyUrl = "";
 
         private MainWindowState mainWindowState;
         private OverlayWindowState overlayWindowState;
@@ -106,6 +107,16 @@ namespace LiveCaptionsTranslator.models
             {
                 ignoredUpdateVersion = value;
                 OnPropertyChanged("IgnoredUpdateVersion");
+            }
+        }
+
+        public string ProxyUrl
+        {
+            get => proxyUrl;
+            set
+            {
+                proxyUrl = value ?? "";
+                OnPropertyChanged("ProxyUrl");
             }
         }
 
@@ -296,6 +307,15 @@ namespace LiveCaptionsTranslator.models
                     index < 0 ||
                     index >= setting.Configs[key].Count)
                     setting.ConfigIndices[key] = 0;
+            }
+
+            if (setting.Configs.TryGetValue("OpenAI", out var openAIConfigs))
+            {
+                foreach (var config in openAIConfigs.OfType<OpenAIConfig>())
+                {
+                    if (string.IsNullOrWhiteSpace(config.ApiUrl))
+                        config.ApiUrl = OpenAIConfig.DefaultApiUrl;
+                }
             }
 
             if (!TranslateAPI.TRANSLATE_FUNCTIONS.ContainsKey(setting.apiName))

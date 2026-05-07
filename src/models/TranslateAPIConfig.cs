@@ -115,6 +115,8 @@ namespace LiveCaptionsTranslator.models
 
     public class OpenAIConfig : BaseLLMConfig
     {
+        public const string DefaultApiUrl = "https://api.openai.com/v1/chat/completions";
+
         public class Choice
         {
             public int index { get; set; }
@@ -142,7 +144,7 @@ namespace LiveCaptionsTranslator.models
         }
 
         private string apiKey = "";
-        private string apiUrl = "";
+        private string apiUrl = DefaultApiUrl;
 
         // Per-session cache for the first compatible OpenAI request payload format.
         [JsonIgnore]

@@ -17,6 +17,7 @@ namespace LiveCaptionsTranslator
 
         private static readonly Queue<string> pendingTextQueue = new();
         private static readonly object pendingTextLock = new();
+        private static readonly SemaphoreSlim pendingTextSignal = new(0, int.MaxValue);
         private static readonly TranslationTaskQueue translationTaskQueue = new();
         private static readonly TimeSpan OverlayCaptionUpdateInterval = TimeSpan.FromMilliseconds(220);
         private static readonly TimeSpan PartialTranslationInterval = TimeSpan.FromMilliseconds(650);
@@ -197,6 +198,10 @@ namespace LiveCaptionsTranslator
                     Caption.DisplayTranslatedCaption = "";
                 }
 
+                // #2: Event-driven wait instead of polling with Sleep(40)
+                // Wait up to 2s for a signal; if Window is null we still loop to retry LiveCaptions
+                await pendingTextSignal.WaitAsync(TimeSpan.FromSeconds(2));
+
                 // Translate
                 if (TryDequeuePendingText(out string originalSnapshot))
                 {
@@ -211,8 +216,6 @@ namespace LiveCaptionsTranslator
                             () => Translate(originalSnapshot, token), token), originalSnapshot);
                     }
                 }
-
-                Thread.Sleep(40);
             }
         }
 
@@ -249,9 +252,9 @@ namespace LiveCaptionsTranslator
                     }
                 }
 
-                // If the original sentence is a complete sentence, choke for better visual experience.
-                if (isChoke)
-                    Thread.Sleep(720);
+                // #3: Dynamic choke - skip if there are pending translations waiting
+                if (isChoke && !HasPendingText())
+                    Thread.Sleep(300);
                 Thread.Sleep(40);
             }
         }
@@ -303,6 +306,9 @@ namespace LiveCaptionsTranslator
 
                 pendingTextQueue.Enqueue(text);
             }
+
+            // #2: Signal TranslateLoop that new text is available
+            pendingTextSignal.Release();
         }
 
         private static bool TryDequeuePendingText(out string originalSnapshot)
@@ -321,6 +327,12 @@ namespace LiveCaptionsTranslator
             return false;
         }
 
+        private static bool HasPendingText()
+        {
+            lock (pendingTextLock)
+                return pendingTextQueue.Count > 0;
+        }
+
         private static bool IsCompleteSentence(string text)
         {
             return !string.IsNullOrEmpty(text) && Array.IndexOf(TextUtil.PUNC_EOS, text[^1]) != -1;
@@ -335,13 +347,11 @@ namespace LiveCaptionsTranslator
             {
                 var sw = Setting.MainWindow.LatencyShow ? Stopwatch.StartNew() : null;
 
-                if (Setting.ContextAware && !TranslateAPI.IsLLMBased)
+                // #1: Disable ContextAware concatenation for non-LLM APIs (they don't understand 🔤 markers)
+                if (Setting.ContextAware && TranslateAPI.IsLLMBased)
                 {
-                    translatedText = await TranslateAPI.TranslateFunction($"{Caption.AwareContextsCaption} 🔤 {text} 🔤", token);
-                    var match = RegexPatterns.TargetSentence().Match(translatedText);
-                    translatedText = match.Success
-                        ? match.Groups[1].Value
-                        : translatedText.Replace("🔤", string.Empty).Trim();
+                    translatedText = await TranslateAPI.TranslateFunction(text, token);
+                    translatedText = translatedText.Replace("🔤", "");
                 }
                 else
                 {
@@ -431,6 +441,52 @@ namespace LiveCaptionsTranslator
             Caption?.OnPropertyChanged("OverlayPreviousTranslation");
         }
 
+        // #5: Add context directly from in-memory data, avoiding SQLite read
+        public static void AddContextDirect(string sourceText, string translatedText)
+        {
+            if (string.IsNullOrEmpty(translatedText) ||
+                translatedText.Contains("[ERROR]") ||
+                translatedText.Contains("[WARNING]"))
+                return;
+
+            var entry = new TranslationHistoryEntry
+            {
+                Timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                TimestampFull = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                SourceText = sourceText,
+                TranslatedText = translatedText,
+                TargetLanguage = Setting?.TargetLanguage ?? "N/A",
+                ApiUsed = Setting?.ApiName ?? "N/A"
+            };
+
+            Caption?.AddContext(entry);
+            Caption?.OnPropertyChanged("DisplayLogCards");
+            Caption?.OnPropertyChanged("OverlayPreviousTranslation");
+        }
+
+        // #5 fix: When overwriting, update the last context entry instead of skipping
+        public static void UpdateLastContext(string sourceText, string translatedText)
+        {
+            if (string.IsNullOrEmpty(translatedText) ||
+                translatedText.Contains("[ERROR]") ||
+                translatedText.Contains("[WARNING]"))
+                return;
+
+            var entry = new TranslationHistoryEntry
+            {
+                Timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                TimestampFull = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                SourceText = sourceText,
+                TranslatedText = translatedText,
+                TargetLanguage = Setting?.TargetLanguage ?? "N/A",
+                ApiUsed = Setting?.ApiName ?? "N/A"
+            };
+
+            Caption?.UpdateLastContext(entry);
+            Caption?.OnPropertyChanged("DisplayLogCards");
+            Caption?.OnPropertyChanged("OverlayPreviousTranslation");
+        }
+
         public static void ClearContexts()
         {
             Caption?.ClearContexts();
@@ -446,11 +502,16 @@ namespace LiveCaptionsTranslator
             if (lastOriginalText == null)
                 return false;
 
+            // #4: Length ratio protection - if one text is more than 2x longer, they are different sentences
+            int maxLen = Math.Max(originalText.Length, lastOriginalText.Length);
             int minLen = Math.Min(originalText.Length, lastOriginalText.Length);
-            originalText = originalText.Substring(0, minLen);
-            lastOriginalText = lastOriginalText.Substring(0, minLen);
+            if (minLen > 0 && maxLen > minLen * 2)
+                return false;
 
-            double similarity = TextUtil.Similarity(originalText, lastOriginalText);
+            string truncatedOriginal = originalText.Substring(0, minLen);
+            string truncatedLast = lastOriginalText.Substring(0, minLen);
+
+            double similarity = TextUtil.Similarity(truncatedOriginal, truncatedLast);
             return similarity > TextUtil.SIM_THRESHOLD;
         }
     }

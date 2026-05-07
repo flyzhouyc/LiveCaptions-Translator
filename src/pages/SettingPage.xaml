@@ -11,6 +11,10 @@
     mc:Ignorable="d">
 
     <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -19,7 +23,7 @@
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Column="0" Orientation="Vertical">
+        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Vertical">
             <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                     <TextBlock Margin="2.5,0,0,5" Text="LiveCaptions" />
@@ -93,7 +97,7 @@
             </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Orientation="Vertical">
+        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Vertical">
             <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                     <TextBlock Margin="2.5,0,0,5" Text="Translate API" />
@@ -167,7 +171,7 @@
             </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Vertical">
+        <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Vertical">
             <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                     <TextBlock Margin="2.5,0,0,5" Text="API Setting" />
@@ -193,7 +197,7 @@
             </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="3" Orientation="Vertical">
+        <StackPanel Grid.Row="0" Grid.Column="3" Orientation="Vertical">
             <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
                     <TextBlock Margin="2.5,0,0,5" Text="Contexts" />
@@ -261,7 +265,7 @@
             </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="4" Orientation="Vertical">
+        <StackPanel Grid.Row="0" Grid.Column="4" Orientation="Vertical">
             <StackPanel Margin="15,0,0,0" Orientation="Vertical">
                 <TextBlock Margin="2.5,0,0,5" Text="Context Aware" />
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
@@ -292,6 +296,49 @@
                     </ui:Flyout>
                 </StackPanel>
             </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5" Margin="15,10,0,0" Orientation="Horizontal">
+            <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                <TextBlock Margin="2.5,0,0,0" VerticalAlignment="Center" Text="Proxy" />
+                <ui:Flyout x:Name="ProxyInfoFlyout">
+                    <TextBlock Width="300" TextWrapping="Wrap">
+                        <Run Text="HTTP/HTTPS proxy for API requests." />
+                        <Run FontWeight="Bold" Text="&#x0A;&#x0A;Format:" />
+                        <Run Text="https://host:port or http://host:port" />
+                        <Run FontWeight="Bold" Text="&#x0A;&#x0A;Note:" />
+                        <Run Text="Leave empty for direct connection (no proxy). Click Apply after changing." />
+                    </TextBlock>
+                </ui:Flyout>
+                <Button
+                    x:Name="ProxyInfo"
+                    Width="15"
+                    Height="15"
+                    Margin="-5,-3,5,0"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    MouseEnter="ProxyInfo_MouseEnter"
+                    MouseLeave="ProxyInfo_MouseLeave">
+                    <ui:SymbolIcon Symbol="Info16" />
+                </Button>
+            </StackPanel>
+            <TextBox
+                x:Name="ProxyUrlBox"
+                Width="350"
+                Height="30"
+                Padding="8,4,8,4"
+                FontSize="13.3"
+                VerticalContentAlignment="Center"
+                Text="{Binding ProxyUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <ui:Button
+                x:Name="ProxyApplyButton"
+                Width="60"
+                Height="30"
+                Margin="8,0,0,0"
+                Padding="11,4,11,4"
+                Click="ProxyApplyButton_Click">
+                <TextBlock Text="Apply" />
+            </ui:Button>
         </StackPanel>
     </Grid>
 </Page>

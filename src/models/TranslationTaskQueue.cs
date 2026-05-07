@@ -101,7 +101,15 @@ namespace LiveCaptionsTranslator.models
             {
                 bool isOverwrite = await Translator.IsOverwrite(translationTask.OriginalText);
                 if (!isOverwrite)
-                    await Translator.AddContexts();
+                {
+                    // #5: Add context directly from in-memory data instead of reading SQLite
+                    Translator.AddContextDirect(translationTask.OriginalText, translatedText);
+                }
+                else
+                {
+                    // Overwrite case: update the last context entry with the newer translation
+                    Translator.UpdateLastContext(translationTask.OriginalText, translatedText);
+                }
                 await Translator.Log(translationTask.OriginalText, translatedText, isOverwrite);
             }
             finally
