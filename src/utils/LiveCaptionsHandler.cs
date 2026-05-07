@@ -40,8 +40,18 @@ namespace LiveCaptionsTranslator.utils
             var process = Process.GetProcessById(processId);
 
             // Kill process
-            process.Kill();
-            process.WaitForExit();
+            using (process)
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(2000))
+                    throw new TimeoutException("Timed out waiting for LiveCaptions to exit.");
+            }
+        }
+
+        public static void KillAllLiveCaptions()
+        {
+            KillAllProcessesByPName(PROCESS_NAME);
         }
 
         public static void HideLiveCaptions(AutomationElement window)
@@ -165,8 +175,20 @@ namespace LiveCaptionsTranslator.utils
                 return;
             foreach (Process process in processes)
             {
-                process.Kill();
-                process.WaitForExit();
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2000);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warning($"Failed to kill process {processName}.", ex);
+                }
+                finally
+                {
+                    process.Dispose();
+                }
             }
         }
     }

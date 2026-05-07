@@ -64,18 +64,19 @@ namespace LiveCaptionsTranslator
             setting = Setting.Load();
         }
 
-        public static void SyncLoop()
+        public static void SyncLoop(CancellationToken token = default)
         {
             int idleCount = 0;
             int syncCount = 0;
             var overlayCaptionUpdate = Stopwatch.StartNew();
             var partialTranslationUpdate = Stopwatch.StartNew();
 
-            while (true)
+            while (!token.IsCancellationRequested)
             {
                 if (Window == null)
                 {
-                    Thread.Sleep(2000);
+                    if (token.WaitHandle.WaitOne(2000))
+                        break;
                     continue;
                 }
 
@@ -95,7 +96,8 @@ namespace LiveCaptionsTranslator
                 }
                 if (string.IsNullOrEmpty(fullText))
                 {
-                    Thread.Sleep(80);
+                    if (token.WaitHandle.WaitOne(80))
+                        break;
                     continue;
                 }
 
@@ -182,13 +184,14 @@ namespace LiveCaptionsTranslator
                     }
                 }
 
-                Thread.Sleep(25);
+                if (token.WaitHandle.WaitOne(25))
+                    break;
             }
         }
 
-        public static async Task TranslateLoop()
+        public static async Task TranslateLoop(CancellationToken token = default)
         {
-            while (true)
+            while (!token.IsCancellationRequested)
             {
                 // Check LiveCaptions.exe still alive
                 if (Window == null)
@@ -200,7 +203,7 @@ namespace LiveCaptionsTranslator
 
                 // #2: Event-driven wait instead of polling with Sleep(40)
                 // Wait up to 2s for a signal; if Window is null we still loop to retry LiveCaptions
-                await pendingTextSignal.WaitAsync(TimeSpan.FromSeconds(2));
+                await pendingTextSignal.WaitAsync(TimeSpan.FromSeconds(2), token);
 
                 // Translate
                 if (TryDequeuePendingText(out string originalSnapshot))
@@ -219,9 +222,9 @@ namespace LiveCaptionsTranslator
             }
         }
 
-        public static void DisplayLoop()
+        public static void DisplayLoop(CancellationToken token = default)
         {
-            while (true)
+            while (!token.IsCancellationRequested)
             {
                 var (translatedText, isChoke) = translationTaskQueue.Output;
 
@@ -254,8 +257,12 @@ namespace LiveCaptionsTranslator
 
                 // #3: Dynamic choke - skip if there are pending translations waiting
                 if (isChoke && !HasPendingText())
-                    Thread.Sleep(300);
-                Thread.Sleep(40);
+                {
+                    if (token.WaitHandle.WaitOne(300))
+                        break;
+                }
+                if (token.WaitHandle.WaitOne(40))
+                    break;
             }
         }
 

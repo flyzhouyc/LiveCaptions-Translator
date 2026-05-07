@@ -15,9 +15,9 @@ namespace LiveCaptionsTranslator
             // Persist first-run defaults and upgrade-added config keys loaded by Translator.
             Translator.Setting?.Save();
 
-            StartBackgroundLoop("SyncLoop", Translator.SyncLoop);
-            StartBackgroundLoop("TranslateLoop", Translator.TranslateLoop);
-            StartBackgroundLoop("DisplayLoop", Translator.DisplayLoop);
+            StartBackgroundLoop("SyncLoop", () => Translator.SyncLoop(ShutdownTokenSource.Token));
+            StartBackgroundLoop("TranslateLoop", () => Translator.TranslateLoop(ShutdownTokenSource.Token));
+            StartBackgroundLoop("DisplayLoop", () => Translator.DisplayLoop(ShutdownTokenSource.Token));
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -118,10 +118,17 @@ namespace LiveCaptionsTranslator
                 AppLogger.Warning("Failed to flush pending setting changes during shutdown.", ex);
             }
 
-            if (Translator.Window != null)
+            try
             {
-                LiveCaptionsHandler.RestoreLiveCaptions(Translator.Window);
-                LiveCaptionsHandler.KillLiveCaptions(Translator.Window);
+                if (Translator.Window != null)
+                    LiveCaptionsHandler.KillLiveCaptions(Translator.Window);
+                else
+                    LiveCaptionsHandler.KillAllLiveCaptions();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("Failed to kill LiveCaptions by window handle; falling back to process cleanup.", ex);
+                LiveCaptionsHandler.KillAllLiveCaptions();
             }
         }
     }
