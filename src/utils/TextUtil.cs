@@ -4,7 +4,7 @@ namespace LiveCaptionsTranslator.utils
 {
     public static class TextUtil
     {
-        public static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
+        public static readonly char[] PUNC_EOS = ".?!;。？！".ToCharArray();
         public static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
 
         public const int SHORT_THRESHOLD = 10;
@@ -112,6 +112,156 @@ namespace LiveCaptionsTranslator.utils
             rest = rest.TrimEnd('/');
 
             return protocol + rest;
+        }
+
+        // --- Sentence boundary detection helpers ---
+
+        private static readonly HashSet<string> AbbrevWhitelist = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st",
+            "etc", "vs", "cf", "eg", "ie", "al",
+            "no", "co", "ltd", "inc", "corp",
+            "am", "pm", "ad", "bc"
+        };
+
+        /// <summary>
+        /// Determines whether a period at the given index is a true sentence-ending period,
+        /// as opposed to an abbreviation dot (Mr. U.S. 3.14 etc.)
+        /// </summary>
+        public static bool IsSentenceEndingPeriod(string text, int dotIndex)
+        {
+            if (dotIndex < 0 || dotIndex >= text.Length || text[dotIndex] != '.')
+                return false;
+
+            // Rule 0: Part of ellipsis (... or ..)
+            if (dotIndex + 1 < text.Length && text[dotIndex + 1] == '.')
+                return false;
+            if (dotIndex >= 1 && text[dotIndex - 1] == '.')
+                return false;
+
+            // Rule 1: Preceded by a single uppercase letter (U.S. / J.K. / A.I.)
+            if (dotIndex >= 1 && char.IsUpper(text[dotIndex - 1]))
+            {
+                if (dotIndex == 1 || !char.IsLetter(text[dotIndex - 2]))
+                    return false;
+            }
+
+            // Rule 2: Preceding word is in abbreviation whitelist
+            int wordStart = dotIndex - 1;
+            while (wordStart >= 0 && char.IsLetter(text[wordStart])) wordStart--;
+            wordStart++;
+            if (wordStart < dotIndex)
+            {
+                string word = text.Substring(wordStart, dotIndex - wordStart);
+                if (AbbrevWhitelist.Contains(word))
+                    return false;
+            }
+
+            // Rule 3: Followed by space + lowercase letter — only suppress if sentence is short
+            // (ASR often doesn't capitalize after real sentence breaks)
+            if (dotIndex + 2 < text.Length && text[dotIndex + 1] == ' ' && char.IsLower(text[dotIndex + 2]))
+            {
+                // Find previous valid sentence boundary (not just previous .)
+                int prevBoundary = text.LastIndexOfAny(new[] { '?', '!', ';', '。', '？', '！' }, dotIndex - 1);
+                int sentenceLength = dotIndex - (prevBoundary + 1);
+                if (sentenceLength < 40)
+                    return false;
+            }
+
+            // Rule 4: Followed by a digit (decimal number: 3.14, version 1.5)
+            if (dotIndex + 1 < text.Length && char.IsDigit(text[dotIndex + 1]))
+                return false;
+
+            // Rule 5: Preceded by a digit (handles "3. 14" after PunctuationSpace preprocessing)
+            if (dotIndex >= 1 && char.IsDigit(text[dotIndex - 1]))
+                return false;
+
+            return true;
+        }
+
+        private static readonly string[] CoordConjunctions =
+            { "and", "but", "so", "or", "yet", "for", "nor" };
+        private static readonly string[] RelativePronouns =
+            { "which", "who", "whom", "whose", "that" };
+        private static readonly string[] SubordConjunctions =
+            { "after", "before", "when", "while", "because", "since", "although", "if", "unless", "until" };
+
+        /// <summary>
+        /// Determines whether a comma at the given index represents a clause boundary
+        /// suitable for splitting a long sentence for translation.
+        /// Only triggers when the sentence is already long enough (>= minLength bytes).
+        /// </summary>
+        public static bool IsClauseBoundary(string text, int commaIndex, int minLength = 80)
+        {
+            if (commaIndex < 0 || commaIndex >= text.Length || text[commaIndex] != ',')
+                return false;
+
+            int prefixBytes = Encoding.UTF8.GetByteCount(text.Substring(0, commaIndex));
+
+            // Only split long sentences
+            if (prefixBytes < minLength)
+                return false;
+
+            // Get the next word after the comma
+            int wordStart = commaIndex + 1;
+            while (wordStart < text.Length && char.IsWhiteSpace(text[wordStart])) wordStart++;
+            int wordEnd = wordStart;
+            while (wordEnd < text.Length && char.IsLetter(text[wordEnd])) wordEnd++;
+            if (wordEnd == wordStart)
+                return false;
+
+            string nextWord = text.Substring(wordStart, wordEnd - wordStart).ToLowerInvariant();
+
+            // Exclude relative pronouns (subordinate clauses that should stay attached)
+            if (RelativePronouns.Contains(nextWord))
+                return false;
+
+            // Coordinating conjunctions: split at normal threshold (80 bytes)
+            if (CoordConjunctions.Contains(nextWord))
+            {
+                // Exclude enumerations: if there's another comma within 50 chars before, likely a list
+                int lookback = Math.Max(0, commaIndex - 50);
+                int otherCommas = 0;
+                for (int i = lookback; i < commaIndex; i++)
+                    if (text[i] == ',') otherCommas++;
+                if (otherCommas >= 1)
+                    return false;
+
+                return true;
+            }
+
+            // Subordinating conjunctions: only split for very long sentences (>= 120 bytes)
+            if (prefixBytes >= 120 && SubordConjunctions.Contains(nextWord))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Finds the last valid sentence-ending position in text, considering
+        /// abbreviation filtering and clause boundary detection.
+        /// Returns -1 if no valid boundary found.
+        /// </summary>
+        public static int FindLastSentenceBoundary(string text)
+        {
+            // First, try standard EOS punctuation with period validation
+            for (int i = text.Length - 1; i >= 0; i--)
+            {
+                char c = text[i];
+                if (c == '?' || c == '!' || c == ';' || c == '。' || c == '？' || c == '！')
+                    return i;
+                if (c == '.' && IsSentenceEndingPeriod(text, i))
+                    return i;
+            }
+
+            // Fallback: try clause boundary (comma + conjunction) for long text
+            for (int i = text.Length - 1; i >= 0; i--)
+            {
+                if (text[i] == ',' && IsClauseBoundary(text, i))
+                    return i;
+            }
+
+            return -1;
         }
     }
 }

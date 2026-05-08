@@ -109,6 +109,7 @@ namespace LiveCaptionsTranslator.apis
         {
             var messages = new List<BaseLLMConfig.Message>
             {
+                // Use Replace instead of string.Format to avoid FormatException when user-edited prompts contain { or }
                 new BaseLLMConfig.Message { role = "system", content = Prompt.Replace("{0}", language, StringComparison.Ordinal) }
             };
 
@@ -126,7 +127,21 @@ namespace LiveCaptionsTranslator.apis
                 }
             }
 
-            messages.Add(new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" });
+            // Expanded Context: prepend surrounding ASR text as context hint so LLM can
+            // better judge sentence boundaries and resolve ambiguity.
+            if (Translator.Setting.ExpandedContext)
+            {
+                string previousContext = Translator.Caption.AwareContextsCaption;
+                if (!string.IsNullOrEmpty(previousContext))
+                    messages.Add(new BaseLLMConfig.Message { role = "user", content = $"[ASR context]: {previousContext}\n🔤 {text} 🔤" });
+                else
+                    messages.Add(new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" });
+            }
+            else
+            {
+                messages.Add(new BaseLLMConfig.Message { role = "user", content = $"🔤 {text} 🔤" });
+            }
+
             return messages;
         }
 
@@ -335,7 +350,7 @@ namespace LiveCaptionsTranslator.apis
                 model = config.ModelName,
                 messages = BuildLLMMessages(language, text),
                 temperature = config.Temperature,
-                max_tokens = 128,
+                max_tokens = 256,
                 stream = false
             };
 
@@ -474,7 +489,9 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                response = await client.GetAsync(url, token);
+                using var timeoutCts = new CancellationTokenSource(RequestTimeout);
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
+                response = await client.GetAsync(url, linkedCts.Token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
@@ -528,7 +545,9 @@ namespace LiveCaptionsTranslator.apis
             HttpResponseMessage response;
             try
             {
-                response = await client.SendAsync(request, token);
+                using var timeoutCts = new CancellationTokenSource(RequestTimeout);
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
+                response = await client.SendAsync(request, linkedCts.Token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {

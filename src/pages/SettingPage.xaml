@@ -296,6 +296,38 @@
                     </ui:Flyout>
                 </StackPanel>
             </StackPanel>
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <TextBlock Margin="2.5,0,0,5" Text="Expanded Context" />
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <ui:ToggleSwitch
+                        Width="90"
+                        Height="30"
+                        Padding="10,4,10,7"
+                        IsChecked="{Binding ExpandedContext, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        OffContent="Off"
+                        OnContent="On" />
+                    <Button
+                        x:Name="ExpandedContextInfo"
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="ExpandedContextInfo_MouseEnter"
+                        MouseLeave="ExpandedContextInfo_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                    <ui:Flyout x:Name="ExpandedContextInfoFlyout">
+                        <TextBlock Width="300" TextWrapping="Wrap">
+                            <Run FontWeight="Bold" Text="Expanded Context" />
+                            <Run Text="&#x0A;Prepends raw ASR text from previous sentences as [ASR context] in the translation request." />
+                            <Run Text="&#x0A;Helps LLM understand sentence boundaries and resolve incomplete fragments." />
+                            <Run Text="&#x0A;Only affects LLM-based APIs." />
+                        </TextBlock>
+                    </ui:Flyout>
+                </StackPanel>
+            </StackPanel>
         </StackPanel>
         <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5" Margin="15,10,0,0" Orientation="Horizontal">
             <StackPanel VerticalAlignment="Center" Orientation="Horizontal">

@@ -43,7 +43,11 @@ namespace LiveCaptionsTranslator.models
             foreach (var droppedTask in droppedTasks)
                 droppedTask.Cancel();
             if (droppedTasks.Count > 0)
+            {
                 AppLogger.Warning($"Dropped {droppedTasks.Count} stale translation task(s).");
+                foreach (var dt in droppedTasks)
+                    DebugLogger.Log("TASK_DROP", $"cancelled_before_complete: \"{dt.OriginalText.Substring(0, Math.Min(dt.OriginalText.Length, 60))}\"");
+            }
 
             _ = newTranslationTask.Task.ContinueWith(
                 async task =>
@@ -87,7 +91,10 @@ namespace LiveCaptionsTranslator.models
                     return;
 
                 for (int i = 0; i < index; i++)
+                {
+                    DebugLogger.Log("TASK_SUPERSEDE", $"older_task_cancelled: \"{tasks[i].OriginalText.Substring(0, Math.Min(tasks[i].OriginalText.Length, 60))}\"");
                     tasks[i].Cancel();
+                }
                 tasks.RemoveRange(0, index + 1);
 
                 output = taskOutput;

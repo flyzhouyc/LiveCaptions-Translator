@@ -15,6 +15,8 @@ namespace LiveCaptionsTranslator
             // Persist first-run defaults and upgrade-added config keys loaded by Translator.
             Translator.Setting?.Save();
 
+            DebugLogger.Initialize();
+
             StartBackgroundLoop("SyncLoop", () => Translator.SyncLoop(ShutdownTokenSource.Token));
             StartBackgroundLoop("TranslateLoop", () => Translator.TranslateLoop(ShutdownTokenSource.Token));
             StartBackgroundLoop("DisplayLoop", () => Translator.DisplayLoop(ShutdownTokenSource.Token));
@@ -109,9 +111,14 @@ namespace LiveCaptionsTranslator
 
             ShutdownTokenSource.Cancel();
 
+            DebugLogger.WriteSummaryAndClose();
+
             try
             {
-                BatchSettingsSave.CommitAllPendingChangesAsync().GetAwaiter().GetResult();
+                // Use a timeout to avoid deadlock when called from UI thread
+                var commitTask = BatchSettingsSave.CommitAllPendingChangesAsync();
+                if (!commitTask.Wait(TimeSpan.FromSeconds(3)))
+                    AppLogger.Warning("Timed out waiting for settings flush during shutdown.");
             }
             catch (Exception ex)
             {
@@ -128,8 +135,18 @@ namespace LiveCaptionsTranslator
             catch (Exception ex)
             {
                 AppLogger.Warning("Failed to kill LiveCaptions by window handle; falling back to process cleanup.", ex);
-                LiveCaptionsHandler.KillAllLiveCaptions();
+                try
+                {
+                    LiveCaptionsHandler.KillAllLiveCaptions();
+                }
+                catch (Exception ex2)
+                {
+                    AppLogger.Warning("Fallback KillAllLiveCaptions also failed.", ex2);
+                }
             }
+
+            // Force exit the process to ensure no background threads keep it alive
+            Environment.Exit(0);
         }
     }
 }

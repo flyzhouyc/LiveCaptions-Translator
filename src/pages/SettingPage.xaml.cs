@@ -159,6 +159,16 @@ namespace LiveCaptionsTranslator
             ContextAwareInfoFlyout.Hide();
         }
 
+        private void ExpandedContextInfo_MouseEnter(object sender, MouseEventArgs e)
+        {
+            ExpandedContextInfoFlyout.Show();
+        }
+
+        private void ExpandedContextInfo_MouseLeave(object sender, MouseEventArgs e)
+        {
+            ExpandedContextInfoFlyout.Hide();
+        }
+
         private void ProxyInfo_MouseEnter(object sender, MouseEventArgs e)
         {
             ProxyInfoFlyout.Show();

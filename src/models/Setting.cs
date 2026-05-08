@@ -21,6 +21,8 @@ namespace LiveCaptionsTranslator.models
         private int numContexts = 2;
         private int displaySentences = 1;
         private bool contextAware = false;
+        private bool expandedContext = true;
+        private bool debugLog = false;
 
         private string apiName;
         private string targetLanguage;
@@ -72,7 +74,24 @@ namespace LiveCaptionsTranslator.models
                 OnPropertyChanged("ContextAware");
             }
         }
-
+        public bool ExpandedContext
+        {
+            get => expandedContext;
+            set
+            {
+                expandedContext = value;
+                OnPropertyChanged("ExpandedContext");
+            }
+        }
+        public bool DebugLog
+        {
+            get => debugLog;
+            set
+            {
+                debugLog = value;
+                OnPropertyChanged("DebugLog");
+            }
+        }
         public string ApiName
         {
             get => apiName;
