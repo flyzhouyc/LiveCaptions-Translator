@@ -17,7 +17,6 @@ namespace LiveCaptionsTranslator.models
         public event PropertyChangedEventHandler? PropertyChanged;
 
         private int maxIdleInterval = 50;
-        private int maxSyncInterval = 3;
         private int numContexts = 2;
         private int displaySentences = 1;
         private bool contextAware = false;
@@ -38,15 +37,6 @@ namespace LiveCaptionsTranslator.models
         private Dictionary<string, int> configIndices;
 
         public int MaxIdleInterval => maxIdleInterval;
-        public int MaxSyncInterval
-        {
-            get => maxSyncInterval;
-            set
-            {
-                maxSyncInterval = value;
-                OnPropertyChanged("MaxSyncInterval");
-            }
-        }
         public int NumContexts
         {
             get => numContexts;

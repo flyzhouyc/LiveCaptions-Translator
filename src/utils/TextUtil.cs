@@ -4,7 +4,7 @@ namespace LiveCaptionsTranslator.utils
 {
     public static class TextUtil
     {
-        public static readonly char[] PUNC_EOS = ".?!;。？！".ToCharArray();
+        public static readonly char[] PUNC_EOS = ".?!。？！".ToCharArray();
         public static readonly char[] PUNC_COMMA = ",，、—\n".ToCharArray();
 
         public const int SHORT_THRESHOLD = 10;
@@ -168,13 +168,22 @@ namespace LiveCaptionsTranslator.utils
                     return false;
             }
 
-            // Rule 4: Followed by a digit (decimal number: 3.14, version 1.5)
-            if (dotIndex + 1 < text.Length && char.IsDigit(text[dotIndex + 1]))
+            // Rule 4: Decimal or version number (3.14, 1.5.2).
+            if (dotIndex >= 1 &&
+                dotIndex + 1 < text.Length &&
+                char.IsDigit(text[dotIndex - 1]) &&
+                char.IsDigit(text[dotIndex + 1]))
                 return false;
 
-            // Rule 5: Preceded by a digit (handles "3. 14" after PunctuationSpace preprocessing)
+            // Rule 5: Decimal after spacing normalization (3. 14).
             if (dotIndex >= 1 && char.IsDigit(text[dotIndex - 1]))
-                return false;
+            {
+                int next = dotIndex + 1;
+                while (next < text.Length && char.IsWhiteSpace(text[next]))
+                    next++;
+                if (next < text.Length && char.IsDigit(text[next]))
+                    return false;
+            }
 
             return true;
         }
@@ -244,13 +253,9 @@ namespace LiveCaptionsTranslator.utils
         /// </summary>
         public static int FindLastSentenceBoundary(string text)
         {
-            // First, try standard EOS punctuation with period validation
             for (int i = text.Length - 1; i >= 0; i--)
             {
-                char c = text[i];
-                if (c == '?' || c == '!' || c == ';' || c == '。' || c == '？' || c == '！')
-                    return i;
-                if (c == '.' && IsSentenceEndingPeriod(text, i))
+                if (IsSentenceBoundaryAt(text, i))
                     return i;
             }
 
@@ -262,6 +267,31 @@ namespace LiveCaptionsTranslator.utils
             }
 
             return -1;
+        }
+
+        public static IEnumerable<int> FindSentenceBoundaries(string text)
+        {
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (IsSentenceBoundaryAt(text, i))
+                    yield return i;
+            }
+        }
+
+        public static bool HasTerminalSentenceBoundary(string text)
+        {
+            return !string.IsNullOrEmpty(text) && IsSentenceBoundaryAt(text, text.Length - 1);
+        }
+
+        public static bool IsSentenceBoundaryAt(string text, int index)
+        {
+            if (index < 0 || index >= text.Length)
+                return false;
+
+            char c = text[index];
+            if (c == '?' || c == '!' || c == '。' || c == '？' || c == '！')
+                return true;
+            return c == '.' && IsSentenceEndingPeriod(text, index);
         }
     }
 }

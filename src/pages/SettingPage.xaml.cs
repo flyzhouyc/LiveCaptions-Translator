@@ -109,16 +109,6 @@ namespace LiveCaptionsTranslator
             LiveCaptionsInfoFlyout.Hide();
         }
 
-        private void FrequencyInfo_MouseEnter(object sender, MouseEventArgs e)
-        {
-            FrequencyInfoFlyout.Show();
-        }
-
-        private void FrequencyInfo_MouseLeave(object sender, MouseEventArgs e)
-        {
-            FrequencyInfoFlyout.Hide();
-        }
-
         private void TranslateAPIInfo_MouseEnter(object sender, MouseEventArgs e)
         {
             TranslateAPIInfoFlyout.Show();

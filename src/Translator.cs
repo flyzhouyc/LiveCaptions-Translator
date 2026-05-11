@@ -1,6 +1,5 @@
 ﻿using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Windows.Automation;
 
 using LiveCaptionsTranslator.apis;
@@ -15,13 +14,14 @@ namespace LiveCaptionsTranslator
         private static Caption caption = null!;
         private static Setting setting = null!;
 
-        private static readonly Queue<string> pendingTextQueue = new();
-        private static readonly object pendingTextLock = new();
-        private static readonly SemaphoreSlim pendingTextSignal = new(0, int.MaxValue);
+        private static readonly Queue<CaptionSegment> pendingSegmentQueue = new();
+        private static readonly object pendingSegmentLock = new();
+        private static readonly SemaphoreSlim pendingSegmentSignal = new(0, int.MaxValue);
         private static readonly TranslationTaskQueue translationTaskQueue = new();
+        private static readonly CaptionSegmentStabilizer segmentStabilizer = new();
         private static readonly TimeSpan OverlayCaptionUpdateInterval = TimeSpan.FromMilliseconds(220);
         private static readonly TimeSpan PartialTranslationInterval = TimeSpan.FromMilliseconds(650);
-        private const int MaxPendingTextQueueLength = 8;
+        private const int MaxPendingSegmentQueueLength = 8;
 
         public static AutomationElement? Window
         {
@@ -66,15 +66,7 @@ namespace LiveCaptionsTranslator
 
         public static void SyncLoop(CancellationToken token = default)
         {
-            int idleCount = 0;
-            int syncCount = 0;
             var overlayCaptionUpdate = Stopwatch.StartNew();
-            var partialTranslationUpdate = Stopwatch.StartNew();
-
-            // Debounce: delay punctuation triggers to avoid translating ASR mid-word updates
-            string? debouncePendingText = null;
-            int debounceTicksRemaining = 0;
-            const int DebounceTickCount = 8; // 8 × 25ms = 200ms
 
             while (!token.IsCancellationRequested)
             {
@@ -106,14 +98,7 @@ namespace LiveCaptionsTranslator
                     continue;
                 }
 
-                // Preprocess
-                fullText = RegexPatterns.Acronym().Replace(fullText, "$1$2");
-                fullText = RegexPatterns.AcronymWithWords().Replace(fullText, "$1 $2");
-                fullText = RegexPatterns.PunctuationSpace().Replace(fullText, "$1 ");
-                fullText = RegexPatterns.CJPunctuationSpace().Replace(fullText, "$1");
-                // Note: For certain languages (such as Japanese), LiveCaptions excessively uses `\n`.
-                // Replace redundant `\n` within sentences with comma or period.
-                fullText = TextUtil.ReplaceNewlines(fullText, TextUtil.MEDIUM_THRESHOLD);
+                fullText = NormalizeCaptionSnapshot(fullText);
 
                 DebugLogger.LogAsrSnapshot(fullText);
 
@@ -122,29 +107,25 @@ namespace LiveCaptionsTranslator
                 if (fullText.IndexOfAny(TextUtil.PUNC_EOS) == -1 && Caption.HasContexts)
                     ClearContexts();
 
-                // Get the last sentence.
-                int lastEOSIndex;
-                if (Array.IndexOf(TextUtil.PUNC_EOS, fullText[^1]) != -1)
+                TimeSpan idleFinalDelay = TimeSpan.FromMilliseconds(
+                    Math.Max(500, Setting.MaxIdleInterval * 25));
+                var update = segmentStabilizer.Process(
+                    fullText,
+                    partialStableDelay: TimeSpan.FromMilliseconds(250),
+                    partialTranslationInterval: PartialTranslationInterval,
+                    idleFinalDelay: idleFinalDelay);
+                if (string.IsNullOrEmpty(update.LatestCaption))
                 {
-                    // Last char is punctuation — validate it's a real sentence end
-                    if (fullText[^1] == '.' && !TextUtil.IsSentenceEndingPeriod(fullText, fullText.Length - 1))
-                        lastEOSIndex = TextUtil.FindLastSentenceBoundary(fullText); //末尾.不算句末，在整个文本中找有效边界
-                    else
-                        lastEOSIndex = TextUtil.FindLastSentenceBoundary(fullText[0..^1]); // 末尾标点有效，找倒数第二个边界
-                }
-                else
-                    lastEOSIndex = TextUtil.FindLastSentenceBoundary(fullText);
-                string latestCaption = fullText.Substring(lastEOSIndex + 1);
-
-                // If the last sentence is too short, extend it by adding the previous sentence.
-                // Note: LiveCaptions may generate multiple characters including EOS at once.
-                if (lastEOSIndex > 0 && Encoding.UTF8.GetByteCount(latestCaption) < TextUtil.SHORT_THRESHOLD)
-                {
-                    lastEOSIndex = fullText[0..lastEOSIndex].LastIndexOfAny(TextUtil.PUNC_EOS);
-                    latestCaption = fullText.Substring(lastEOSIndex + 1);
+                    if (token.WaitHandle.WaitOne(25))
+                        break;
+                    continue;
                 }
 
-                string overlayOriginalCaption = BuildOverlayOriginalCaption(fullText, latestCaption, lastEOSIndex);
+                string latestCaption = update.LatestCaption;
+                string overlayOriginalCaption = BuildOverlayOriginalCaption(
+                    fullText,
+                    latestCaption,
+                    update.LatestCaptionBoundaryIndex);
                 if (IsCompleteSentence(latestCaption) ||
                     overlayCaptionUpdate.Elapsed >= OverlayCaptionUpdateInterval)
                 {
@@ -161,71 +142,11 @@ namespace LiveCaptionsTranslator
                         TextUtil.ShortenDisplaySentence(Caption.DisplayOriginalCaption, TextUtil.VERYLONG_THRESHOLD);
                 }
 
-                // Prepare for `OriginalCaption`. If Expanded, only retain the complete sentence.
-                int lastEOS = latestCaption.LastIndexOfAny(TextUtil.PUNC_EOS);
-                if (lastEOS != -1)
-                    latestCaption = latestCaption.Substring(0, lastEOS + 1);
-                // `OriginalCaption`: The sentence to be really translated.
-                if (string.CompareOrdinal(Caption.OriginalCaption, latestCaption) != 0)
-                {
-                    Caption.OriginalCaption = latestCaption;
+                if (string.CompareOrdinal(Caption.OriginalCaption, update.TranslationCandidate) != 0)
+                    Caption.OriginalCaption = update.TranslationCandidate;
 
-                    idleCount = 0;
-                    if (Array.IndexOf(TextUtil.PUNC_EOS, Caption.OriginalCaption[^1]) != -1)
-                    {
-                        // Debounce: don't enqueue immediately, wait to confirm ASR is stable
-                        debouncePendingText = Caption.OriginalCaption;
-                        debounceTicksRemaining = DebounceTickCount;
-                        syncCount = 0;
-                        partialTranslationUpdate.Restart();
-                    }
-                    else if (Encoding.UTF8.GetByteCount(Caption.OriginalCaption) >= TextUtil.SHORT_THRESHOLD)
-                        syncCount++;
-
-                    // Text changed — cancel any pending debounce (ASR is still updating)
-                    if (debouncePendingText != null &&
-                        string.CompareOrdinal(debouncePendingText, Caption.OriginalCaption) != 0 &&
-                        !Array.Exists(TextUtil.PUNC_EOS, c => Caption.OriginalCaption.Length > 0 && Caption.OriginalCaption[^1] == c))
-                    {
-                        string cancelledTail = debouncePendingText.Length > 40
-                            ? debouncePendingText.Substring(debouncePendingText.Length - 40)
-                            : debouncePendingText;
-                        DebugLogger.Log("DEBOUNCE", $"cancelled: text changed from \"...{cancelledTail}\"");
-                        DebugLogger.LogDebounceCancelled();
-                        debouncePendingText = null;
-                        debounceTicksRemaining = 0;
-                    }
-                }
-                else
-                {
-                    idleCount++;
-
-                    // Debounce countdown: text is stable, tick down
-                    if (debouncePendingText != null && debounceTicksRemaining > 0)
-                    {
-                        debounceTicksRemaining--;
-                        if (debounceTicksRemaining == 0)
-                        {
-                            // Confirmed stable — enqueue now
-                            EnqueuePendingText(debouncePendingText, "punctuation");
-                            debouncePendingText = null;
-                        }
-                    }
-                }
-
-                // `TranslateFlag` determines whether this sentence should be translated.
-                // When `OriginalCaption` remains unchanged, `idleCount` +1; when `OriginalCaption` changes, `MaxSyncInterval` +1.
-                if (syncCount > Setting.MaxSyncInterval ||
-                    idleCount == Setting.MaxIdleInterval)
-                {
-                    bool idleFlush = idleCount == Setting.MaxIdleInterval;
-                    if (idleFlush || partialTranslationUpdate.Elapsed >= PartialTranslationInterval)
-                    {
-                        syncCount = 0;
-                        EnqueuePendingText(Caption.OriginalCaption, idleFlush ? "idleInterval" : "syncInterval");
-                        partialTranslationUpdate.Restart();
-                    }
-                }
+                foreach (var segment in update.Segments)
+                    EnqueuePendingSegment(segment);
 
                 if (token.WaitHandle.WaitOne(25))
                     break;
@@ -246,20 +167,24 @@ namespace LiveCaptionsTranslator
 
                 // #2: Event-driven wait instead of polling with Sleep(40)
                 // Wait up to 2s for a signal; if Window is null we still loop to retry LiveCaptions
-                await pendingTextSignal.WaitAsync(TimeSpan.FromSeconds(2), token);
+                await pendingSegmentSignal.WaitAsync(TimeSpan.FromSeconds(2), token);
 
                 // Translate
-                if (TryDequeuePendingText(out string originalSnapshot))
+                if (TryDequeuePendingSegment(out CaptionSegment segment))
                 {
                     if (LogOnlyFlag)
                     {
-                        bool isOverwrite = await IsOverwrite(originalSnapshot);
-                        await LogOnly(originalSnapshot, isOverwrite);
+                        if (!segment.IsFinal)
+                            continue;
+
+                        bool isOverwrite = await IsOverwrite(segment.SourceText);
+                        await LogOnly(segment.SourceText, isOverwrite);
                     }
                     else
                     {
-                        translationTaskQueue.Enqueue(token => Task.Run(
-                            () => Translate(originalSnapshot, token), token), originalSnapshot);
+                        translationTaskQueue.Enqueue(
+                            token => Translate(segment.SourceText, token),
+                            segment);
                     }
                 }
             }
@@ -269,7 +194,8 @@ namespace LiveCaptionsTranslator
         {
             while (!token.IsCancellationRequested)
             {
-                var (translatedText, isChoke) = translationTaskQueue.Output;
+                var output = translationTaskQueue.Output;
+                string translatedText = output.TranslatedText;
 
                 if (LogOnlyFlag)
                 {
@@ -300,7 +226,7 @@ namespace LiveCaptionsTranslator
                     }
 
                     // Log display update
-                    if (!string.IsNullOrEmpty(previousTranslation) && !isChoke)
+                    if (!string.IsNullOrEmpty(previousTranslation) && !output.IsFinal)
                         DebugLogger.Log("DISPLAY", $"RAPID_UPDATE prev=\"{previousTranslation.Substring(Math.Max(0, previousTranslation.Length - 40))}\" → new=\"{translatedText.Substring(0, Math.Min(translatedText.Length, 40))}\"");
                 }
                 else if (!string.IsNullOrEmpty(translatedText) &&
@@ -310,7 +236,7 @@ namespace LiveCaptionsTranslator
                 }
 
                 // #3: Dynamic choke - skip if there are pending translations waiting
-                if (isChoke && !HasPendingText())
+                if (output.IsFinal && !HasPendingSegments())
                 {
                     if (token.WaitHandle.WaitOne(300))
                         break;
@@ -318,6 +244,15 @@ namespace LiveCaptionsTranslator
                 if (token.WaitHandle.WaitOne(40))
                     break;
             }
+        }
+
+        private static string NormalizeCaptionSnapshot(string fullText)
+        {
+            fullText = RegexPatterns.Acronym().Replace(fullText, "$1$2");
+            fullText = RegexPatterns.AcronymWithWords().Replace(fullText, "$1 $2");
+            fullText = RegexPatterns.PunctuationSpace().Replace(fullText, "$1 ");
+            fullText = RegexPatterns.CJPunctuationSpace().Replace(fullText, "$1");
+            return TextUtil.ReplaceNewlines(fullText, TextUtil.MEDIUM_THRESHOLD);
         }
 
         private static string BuildOverlayOriginalCaption(string fullText, string latestCaption, int lastEOSIndex)
@@ -346,20 +281,32 @@ namespace LiveCaptionsTranslator
                 : previousCaption + Environment.NewLine + currentCaption;
         }
 
-        private static void EnqueuePendingText(string text, string trigger = "unknown")
+        private static void EnqueuePendingSegment(CaptionSegment segment)
         {
-            if (string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrWhiteSpace(segment.SourceText))
                 return;
 
-            lock (pendingTextLock)
+            lock (pendingSegmentLock)
             {
-                if (pendingTextQueue.Count > 0 && string.CompareOrdinal(pendingTextQueue.Last(), text) == 0)
+                if (pendingSegmentQueue.Count > 0)
+                {
+                    var last = pendingSegmentQueue.Last();
+                    if (last.IsPartial == segment.IsPartial &&
+                        string.CompareOrdinal(last.SourceText, segment.SourceText) == 0)
+                        return;
+                }
+
+                if (segment.IsPartial &&
+                    pendingSegmentQueue.Any(item =>
+                        item.IsFinal &&
+                        string.CompareOrdinal(item.SourceText, segment.SourceText) == 0))
                     return;
 
+
                 int droppedCount = 0;
-                while (pendingTextQueue.Count >= MaxPendingTextQueueLength)
+                while (pendingSegmentQueue.Count >= MaxPendingSegmentQueueLength)
                 {
-                    pendingTextQueue.Dequeue();
+                    DropOldestPendingSegment();
                     droppedCount++;
                 }
                 if (droppedCount > 0)
@@ -368,50 +315,66 @@ namespace LiveCaptionsTranslator
                     DebugLogger.LogDrop(droppedCount);
                 }
 
-                pendingTextQueue.Enqueue(text);
+                pendingSegmentQueue.Enqueue(segment);
             }
 
-            DebugLogger.LogEnqueue(text, trigger);
+            DebugLogger.LogEnqueue(segment.SourceText, segment.Trigger);
 
-            // #2: Signal TranslateLoop that new text is available
-            pendingTextSignal.Release();
+            pendingSegmentSignal.Release();
         }
 
-        private static bool TryDequeuePendingText(out string originalSnapshot)
+        private static bool TryDequeuePendingSegment(out CaptionSegment segment)
         {
-            lock (pendingTextLock)
+            lock (pendingSegmentLock)
             {
-                while (pendingTextQueue.Count > 0)
+                while (pendingSegmentQueue.Count > 0)
                 {
-                    originalSnapshot = pendingTextQueue.Dequeue();
-                    if (IsCompleteSentence(originalSnapshot) || pendingTextQueue.Count == 0)
+                    segment = pendingSegmentQueue.Dequeue();
+                    if (segment.IsFinal || pendingSegmentQueue.Count == 0)
                     {
-                        DebugLogger.LogDequeue(originalSnapshot);
+                        DebugLogger.LogDequeue(segment.SourceText);
                         return true;
                     }
-                    DebugLogger.LogSkip(originalSnapshot, "superseded_by_newer");
+                    DebugLogger.LogSkip(segment.SourceText, "partial_superseded_by_newer");
                 }
             }
 
-            originalSnapshot = string.Empty;
+            segment = null!;
             return false;
         }
 
-        private static bool HasPendingText()
+        private static bool HasPendingSegments()
         {
-            lock (pendingTextLock)
-                return pendingTextQueue.Count > 0;
+            lock (pendingSegmentLock)
+                return pendingSegmentQueue.Count > 0;
         }
 
         private static bool IsCompleteSentence(string text)
         {
-            return !string.IsNullOrEmpty(text) && Array.IndexOf(TextUtil.PUNC_EOS, text[^1]) != -1;
+            return TextUtil.HasTerminalSentenceBoundary(text);
         }
 
-        public static async Task<(string, bool)> Translate(string text, CancellationToken token = default)
+        private static void DropOldestPendingSegment()
+        {
+            if (pendingSegmentQueue.Count == 0)
+                return;
+
+            var items = pendingSegmentQueue.ToList();
+            int dropIndex = items.FindIndex(item => item.IsPartial);
+            if (dropIndex < 0)
+                dropIndex = 0;
+
+            pendingSegmentQueue.Clear();
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (i != dropIndex)
+                    pendingSegmentQueue.Enqueue(items[i]);
+            }
+        }
+
+        public static async Task<string> Translate(string text, CancellationToken token = default)
         {
             string translatedText;
-            bool isChoke = IsCompleteSentence(text);
             var debugSw = DebugLogger.IsEnabled ? Stopwatch.StartNew() : null;
 
             try
@@ -435,7 +398,7 @@ namespace LiveCaptionsTranslator
             }
             catch (Exception ex)
             {
-                return ($"[ERROR] Translation Failed: {ex.Message}", isChoke);
+                return $"[ERROR] Translation Failed: {ex.Message}";
             }
 
             if (debugSw != null)
@@ -444,7 +407,7 @@ namespace LiveCaptionsTranslator
                 DebugLogger.LogTranslation(text, translatedText, (int)debugSw.ElapsedMilliseconds);
             }
 
-            return (translatedText, isChoke);
+            return translatedText;
         }
 
         public static async Task Log(string originalText, string translatedText,

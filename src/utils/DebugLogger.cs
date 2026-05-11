@@ -23,9 +23,9 @@ namespace LiveCaptionsTranslator.utils
         private static int totalDropped;
         private static int totalTranslated;
         private static int punctuationTriggers;
-        private static int syncIntervalTriggers;
         private static int idleIntervalTriggers;
         private static int clauseBoundaryTriggers;
+        private static int partialStableTriggers;
         private static int debounceCancelled;
         private static long totalEnqueuedBytes;
         private static int totalTranslationMs;
@@ -43,7 +43,7 @@ namespace LiveCaptionsTranslator.utils
                 string filename = $"debug_{DateTime.Now:yyyyMMdd_HHmmss}.log";
                 string path = Path.Combine(Directory.GetCurrentDirectory(), filename);
                 writer = new StreamWriter(path, false, Encoding.UTF8) { AutoFlush = true };
-                Log("SESSION_START", $"DebugLog initialized. Settings: MaxSyncInterval={Translator.Setting?.MaxSyncInterval}, MaxIdleInterval={Translator.Setting?.MaxIdleInterval}, NumContexts={Translator.Setting?.NumContexts}, ContextAware={Translator.Setting?.ContextAware}, ExpandedContext={Translator.Setting?.ExpandedContext}");
+                Log("SESSION_START", $"DebugLog initialized. Settings: MaxIdleInterval={Translator.Setting?.MaxIdleInterval}, NumContexts={Translator.Setting?.NumContexts}, ContextAware={Translator.Setting?.ContextAware}, ExpandedContext={Translator.Setting?.ExpandedContext}");
 
                 // Ensure summary is written even on unhandled exceptions
                 AppDomain.CurrentDomain.UnhandledException += (s, e) => WriteSummaryAndClose();
@@ -87,9 +87,9 @@ namespace LiveCaptionsTranslator.utils
             switch (trigger)
             {
                 case "punctuation": Interlocked.Increment(ref punctuationTriggers); break;
-                case "syncInterval": Interlocked.Increment(ref syncIntervalTriggers); break;
                 case "idleInterval": Interlocked.Increment(ref idleIntervalTriggers); break;
                 case "clauseBoundary": Interlocked.Increment(ref clauseBoundaryTriggers); break;
+                case "partialStable": Interlocked.Increment(ref partialStableTriggers); break;
             }
 
             Log("ENQUEUE", $"trigger={trigger} len={text.Length} text=\"{Truncate(text, 100)}\"");
@@ -134,15 +134,14 @@ namespace LiveCaptionsTranslator.utils
         public static void WriteSummaryAndClose()
         {
             if (!isEnabled || writer == null) return;
-            isEnabled = false; // Prevent double-call from UnhandledException + App.Exit
 
             int avgLen = totalEnqueued > 0 ? (int)(totalEnqueuedBytes / totalEnqueued) : 0;
             int avgTransMs = translationCount > 0 ? totalTranslationMs / translationCount : 0;
-            int totalTriggers = punctuationTriggers + syncIntervalTriggers + idleIntervalTriggers + clauseBoundaryTriggers;
-            double syncRatio = totalTriggers > 0 ? (double)syncIntervalTriggers / totalTriggers * 100 : 0;
+            int totalTriggers = punctuationTriggers + idleIntervalTriggers + clauseBoundaryTriggers + partialStableTriggers;
             double idleRatio = totalTriggers > 0 ? (double)idleIntervalTriggers / totalTriggers * 100 : 0;
             double punctRatio = totalTriggers > 0 ? (double)punctuationTriggers / totalTriggers * 100 : 0;
             double clauseRatio = totalTriggers > 0 ? (double)clauseBoundaryTriggers / totalTriggers * 100 : 0;
+            double partialRatio = totalTriggers > 0 ? (double)partialStableTriggers / totalTriggers * 100 : 0;
 
             Log("SUMMARY", "=== Session Statistics ===");
             Log("SUMMARY", $"ASR snapshots captured: {totalAsrSnapshots}");
@@ -157,22 +156,15 @@ namespace LiveCaptionsTranslator.utils
             Log("SUMMARY", $"--- Trigger breakdown ---");
             Log("SUMMARY", $"Punctuation triggers: {punctuationTriggers} ({punctRatio:F1}%)");
             Log("SUMMARY", $"Clause boundary triggers: {clauseBoundaryTriggers} ({clauseRatio:F1}%)");
-            Log("SUMMARY", $"MaxSyncInterval triggers: {syncIntervalTriggers} ({syncRatio:F1}%)");
+            Log("SUMMARY", $"Partial stable triggers: {partialStableTriggers} ({partialRatio:F1}%)");
             Log("SUMMARY", $"MaxIdleInterval triggers: {idleIntervalTriggers} ({idleRatio:F1}%)");
 
             // Parameter recommendations
             Log("RECOMMEND", "=== Parameter Recommendations ===");
-            if (syncRatio > 50)
-                Log("RECOMMEND", $"MaxSyncInterval fallback triggered {syncRatio:F0}% of the time. Consider DECREASING MaxSyncInterval (current: {Translator.Setting?.MaxSyncInterval}) to reduce partial-sentence translations.");
-            else if (syncRatio < 10 && punctRatio > 70)
-                Log("RECOMMEND", $"Punctuation triggers dominate ({punctRatio:F0}%). MaxSyncInterval rarely needed. Current value is fine or could be INCREASED for less noise.");
-
             if (totalDropped > 0)
-                Log("RECOMMEND", $"Queue overflow occurred {totalDropped} times. Translation API may be too slow, or consider increasing MaxPendingTextQueueLength.");
+                Log("RECOMMEND", $"Queue overflow occurred {totalDropped} times. Translation API may be too slow for the speaker's pace.");
 
-            if (avgLen < 20 && totalEnqueued > 10)
-                Log("RECOMMEND", $"Average sentence length is very short ({avgLen} bytes). Many partial fragments are being translated. Consider INCREASING MaxSyncInterval.");
-            else if (avgLen > 150)
+            if (avgLen > 150)
                 Log("RECOMMEND", $"Average sentence length is long ({avgLen} bytes). Sentences may be too large for quick translation. Clause boundary detection is working well.");
 
             if (idleRatio > 40)
@@ -190,6 +182,8 @@ namespace LiveCaptionsTranslator.utils
                 }
                 catch { }
             }
+
+            isEnabled = false; // Prevent double-call from UnhandledException + App.Exit
         }
 
         private static string Truncate(string text, int maxLen)
