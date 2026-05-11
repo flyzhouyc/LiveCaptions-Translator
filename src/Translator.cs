@@ -192,47 +192,17 @@ namespace LiveCaptionsTranslator
 
         public static void DisplayLoop(CancellationToken token = default)
         {
+            var composer = new DisplayComposer(Caption);
+
             while (!token.IsCancellationRequested)
             {
                 var output = translationTaskQueue.Output;
-                string translatedText = output.TranslatedText;
+                var action = composer.Apply(output, LogOnlyFlag);
 
-                if (LogOnlyFlag)
+                if (action == DisplayAction.Duplicate)
                 {
-                    Caption.TranslatedCaption = string.Empty;
-                    Caption.DisplayTranslatedCaption = "[Paused]";
-                    Caption.OverlayNoticePrefix = "[Paused]";
-                    Caption.OverlayCurrentTranslation = string.Empty;
-                }
-                else if (!string.IsNullOrEmpty(RegexPatterns.NoticePrefix().Replace(
-                             translatedText, string.Empty).Trim()) &&
-                         string.CompareOrdinal(Caption.TranslatedCaption, translatedText) != 0)
-                {
-                    string previousTranslation = Caption.TranslatedCaption;
-
-                    // Main page
-                    Caption.TranslatedCaption = translatedText;
-                    Caption.DisplayTranslatedCaption =
-                        TextUtil.ShortenDisplaySentence(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
-
-                    // Overlay window
-                    if (Caption.TranslatedCaption.Contains("[ERROR]") || Caption.TranslatedCaption.Contains("[WARNING]"))
-                        Caption.OverlayCurrentTranslation = Caption.TranslatedCaption;
-                    else
-                    {
-                        var match = RegexPatterns.NoticePrefixAndTranslation().Match(Caption.TranslatedCaption);
-                        Caption.OverlayNoticePrefix = match.Groups[1].Value.Trim();
-                        Caption.OverlayCurrentTranslation = match.Groups[2].Value.Trim();
-                    }
-
-                    // Log display update
-                    if (!string.IsNullOrEmpty(previousTranslation) && !output.IsFinal)
-                        DebugLogger.Log("DISPLAY", $"RAPID_UPDATE prev=\"{previousTranslation.Substring(Math.Max(0, previousTranslation.Length - 40))}\" → new=\"{translatedText.Substring(0, Math.Min(translatedText.Length, 40))}\"");
-                }
-                else if (!string.IsNullOrEmpty(translatedText) &&
-                         string.CompareOrdinal(Caption.TranslatedCaption, translatedText) == 0)
-                {
-                    DebugLogger.Log("DISPLAY", $"DUPLICATE_SKIPPED text=\"{translatedText.Substring(0, Math.Min(translatedText.Length, 60))}\"");
+                    string text = output.TranslatedText;
+                    DebugLogger.Log("DISPLAY", $"DUPLICATE_SKIPPED text=\"{text.Substring(0, Math.Min(text.Length, 60))}\"");
                 }
 
                 // #3: Dynamic choke - skip if there are pending translations waiting
