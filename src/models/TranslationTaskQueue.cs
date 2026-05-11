@@ -26,6 +26,31 @@ namespace LiveCaptionsTranslator.models
             output = TranslationOutput.Empty;
         }
 
+        // Called by streaming-capable translators (currently OpenAI SSE) on each
+        // accumulated chunk. Writes a non-final output for the segment if no
+        // newer segment has advanced lastOutputSegmentId; older segments' tokens
+        // are dropped silently. The final commit still goes through OnTaskCompleted.
+        public void UpdateStreamingOutput(CaptionSegment segment, string partialText)
+        {
+            if (string.IsNullOrEmpty(partialText))
+                return;
+
+            lock (_lock)
+            {
+                if (segment.Id < lastOutputSegmentId)
+                    return;
+
+                output = new TranslationOutput(
+                    segment.Id,
+                    segment.Index,
+                    segment.SourceText,
+                    partialText,
+                    isFinal: false,
+                    segment.Trigger);
+                lastOutputSegmentId = segment.Id;
+            }
+        }
+
         public void Enqueue(Func<CancellationToken, Task<string>> worker, CaptionSegment segment)
         {
             var newTranslationTask = new TranslationTask(worker, segment, new CancellationTokenSource());

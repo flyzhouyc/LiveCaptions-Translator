@@ -15,21 +15,26 @@ namespace LiveCaptionsTranslator.apis
         /*
          * The key of this field is used as the content for `translateAPIBox` in the `SettingPage`.
          * If you'd like to add a new API, please insert the key-value pair here.
+         *
+         * Third parameter `onPartial` is an optional progressive callback: providers
+         * that stream tokens (currently only OpenAI via SSE) invoke it with the
+         * accumulated translation so far so the UI can display tokens as they arrive.
+         * Non-streaming providers ignore it.
          */
-        public static readonly Dictionary<string, Func<string, CancellationToken, Task<string>>>
+        public static readonly Dictionary<string, Func<string, CancellationToken, Action<string>?, Task<string>>>
             TRANSLATE_FUNCTIONS = new()
         {
-            { "Google", Google },
-            { "Google2", Google2 },
-            { "Ollama", Ollama },
-            { "OpenAI", OpenAI },
-            { "LMStudio", LMStudio },
-            { "DeepL", DeepL },
-            { "OpenRouter", OpenRouter },
-            { "Youdao", Youdao },
-            { "MTranServer", MTranServer },
-            { "Baidu", Baidu },
-            { "LibreTranslate", LibreTranslate },
+            { "Google",         (text, token, _) => Google(text, token) },
+            { "Google2",        (text, token, _) => Google2(text, token) },
+            { "Ollama",         (text, token, _) => Ollama(text, token) },
+            { "OpenAI",         OpenAI },
+            { "LMStudio",       (text, token, _) => LMStudio(text, token) },
+            { "DeepL",          (text, token, _) => DeepL(text, token) },
+            { "OpenRouter",     (text, token, _) => OpenRouter(text, token) },
+            { "Youdao",         (text, token, _) => Youdao(text, token) },
+            { "MTranServer",    (text, token, _) => MTranServer(text, token) },
+            { "Baidu",          (text, token, _) => Baidu(text, token) },
+            { "LibreTranslate", (text, token, _) => LibreTranslate(text, token) },
         };
         public static readonly List<string> LLM_BASED_APIS = new()
         {
@@ -40,7 +45,7 @@ namespace LiveCaptionsTranslator.apis
             "Google", "Google2"
         };
 
-        public static Func<string, CancellationToken, Task<string>> TranslateFunction =>
+        public static Func<string, CancellationToken, Action<string>?, Task<string>> TranslateFunction =>
             TRANSLATE_FUNCTIONS[Translator.Setting.ApiName];
         public static bool IsLLMBased => LLM_BASED_APIS.Contains(Translator.Setting.ApiName);
         public static string Prompt => Translator.Setting.Prompt;
@@ -145,7 +150,8 @@ namespace LiveCaptionsTranslator.apis
             return messages;
         }
 
-        public static async Task<string> OpenAI(string text, CancellationToken token = default)
+        public static async Task<string> OpenAI(
+            string text, CancellationToken token = default, Action<string>? onPartial = null)
         {
             if (!TryGetConfig("OpenAI", out OpenAIConfig config))
                 return "[ERROR] Translation Failed: Invalid OpenAI config";
@@ -243,7 +249,18 @@ namespace LiveCaptionsTranslator.apis
                             {
                                 string? chunk = contentToken2.GetString();
                                 if (!string.IsNullOrEmpty(chunk))
+                                {
                                     sb.Append(chunk);
+                                    if (onPartial != null)
+                                    {
+                                        // Strip reasoning-model thinking tokens before reporting,
+                                        // so the streaming UI doesn't flash <think>…</think> content.
+                                        string streamed = RegexPatterns.ModelThinking()
+                                            .Replace(sb.ToString(), "").TrimStart();
+                                        if (streamed.Length > 0)
+                                            onPartial(streamed);
+                                    }
+                                }
                             }
                         }
                     }

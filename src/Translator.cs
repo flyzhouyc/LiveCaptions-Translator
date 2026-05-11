@@ -20,7 +20,7 @@ namespace LiveCaptionsTranslator
         private static readonly TranslationTaskQueue translationTaskQueue = new();
         private static readonly CaptionSegmentStabilizer segmentStabilizer = new();
         private static readonly TimeSpan OverlayCaptionUpdateInterval = TimeSpan.FromMilliseconds(220);
-        private static readonly TimeSpan PartialTranslationInterval = TimeSpan.FromMilliseconds(650);
+        private static readonly TimeSpan PartialTranslationInterval = TimeSpan.FromMilliseconds(500);
         private const int MaxPendingSegmentQueueLength = 8;
 
         public static AutomationElement? Window
@@ -108,7 +108,7 @@ namespace LiveCaptionsTranslator
                     ClearContexts();
 
                 TimeSpan idleFinalDelay = TimeSpan.FromMilliseconds(
-                    Math.Max(500, Setting.MaxIdleInterval * 25));
+                    Math.Max(400, Setting.MaxIdleInterval * 20));
                 var update = segmentStabilizer.Process(
                     fullText,
                     partialStableDelay: TimeSpan.FromMilliseconds(250),
@@ -183,7 +183,7 @@ namespace LiveCaptionsTranslator
                     else
                     {
                         translationTaskQueue.Enqueue(
-                            token => Translate(segment.SourceText, token),
+                            token => Translate(segment, token),
                             segment);
                     }
                 }
@@ -372,10 +372,22 @@ namespace LiveCaptionsTranslator
             }
         }
 
-        public static async Task<string> Translate(string text, CancellationToken token = default)
+        public static async Task<string> Translate(
+            CaptionSegment segment, CancellationToken token = default)
         {
+            string text = segment.SourceText;
             string translatedText;
             var debugSw = DebugLogger.IsEnabled ? Stopwatch.StartNew() : null;
+
+            // Streaming progress hook: providers that stream tokens (OpenAI SSE)
+            // call this on each accumulated chunk so the UI can render typing-style
+            // updates without waiting for the full translation.
+            Action<string> onPartial = partial =>
+            {
+                if (string.IsNullOrEmpty(partial))
+                    return;
+                translationTaskQueue.UpdateStreamingOutput(segment, partial.Replace("🔤", ""));
+            };
 
             try
             {
@@ -383,7 +395,7 @@ namespace LiveCaptionsTranslator
 
                 // ContextAware/ExpandedContext logic is handled inside BuildLLMMessages for LLM APIs;
                 // non-LLM APIs simply receive the raw text via their own methods.
-                translatedText = await TranslateAPI.TranslateFunction(text, token);
+                translatedText = await TranslateAPI.TranslateFunction(text, token, onPartial);
                 translatedText = translatedText.Replace("🔤", "");
 
                 if (sw != null)
