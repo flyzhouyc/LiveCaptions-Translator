@@ -95,6 +95,13 @@ namespace LiveCaptionsTranslator.utils
 
             if (string.CompareOrdinal(activePartialText, translationCandidate) != 0)
             {
+                if (activePartialChangedUtc != DateTime.MinValue &&
+                    TextAlignmentUtil.IsLikelyRevision(activePartialText, translationCandidate))
+                {
+                    activePartialText = translationCandidate;
+                    return;
+                }
+
                 activePartialText = translationCandidate;
                 activePartialChangedUtc = nowUtc;
                 return;
@@ -115,7 +122,9 @@ namespace LiveCaptionsTranslator.utils
             }
 
             bool intervalElapsed = nowUtc - lastPartialEnqueuedUtc >= partialTranslationInterval;
-            if (!intervalElapsed && string.CompareOrdinal(lastPartialEnqueuedText, translationCandidate) == 0)
+            if (!intervalElapsed &&
+                (string.CompareOrdinal(lastPartialEnqueuedText, translationCandidate) == 0 ||
+                 TextAlignmentUtil.IsLikelyRevision(lastPartialEnqueuedText, translationCandidate)))
                 return;
 
             segments.Add(CreateSegment(translationCandidate, isPartial: true, "partialStable", nowUtc));
@@ -134,7 +143,7 @@ namespace LiveCaptionsTranslator.utils
                 return;
 
             string key = NormalizeFinalKey(text);
-            if (recentFinalKeys.Contains(key))
+            if (IsRecentlyFinal(key))
                 return;
 
             RememberFinal(text);
@@ -156,7 +165,7 @@ namespace LiveCaptionsTranslator.utils
         private void RememberFinal(string text)
         {
             string key = NormalizeFinalKey(text);
-            if (recentFinalKeys.Contains(key))
+            if (IsRecentlyFinal(key))
                 return;
 
             recentFinalKeys.Add(key);
@@ -232,6 +241,15 @@ namespace LiveCaptionsTranslator.utils
             return string.Join(" ", text.Trim().Split(
                 (char[]?)null,
                 StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private bool IsRecentlyFinal(string normalizedText)
+        {
+            if (recentFinalKeys.Contains(normalizedText))
+                return true;
+
+            return recentFinalKeys.Any(previous =>
+                TextAlignmentUtil.IsLikelyRevision(previous, normalizedText));
         }
     }
 }

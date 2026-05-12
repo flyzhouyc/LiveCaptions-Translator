@@ -19,6 +19,7 @@ namespace LiveCaptionsTranslator
         private static readonly SemaphoreSlim pendingSegmentSignal = new(0, int.MaxValue);
         private static readonly TranslationTaskQueue translationTaskQueue = new();
         private static readonly CaptionSegmentStabilizer segmentStabilizer = new();
+        private static readonly CaptionAligner captionAligner = new();
         private static readonly TimeSpan OverlayCaptionUpdateInterval = TimeSpan.FromMilliseconds(220);
         private static readonly TimeSpan PartialTranslationInterval = TimeSpan.FromMilliseconds(500);
         private const int MaxPendingSegmentQueueLength = 8;
@@ -146,7 +147,11 @@ namespace LiveCaptionsTranslator
                     Caption.OriginalCaption = update.TranslationCandidate;
 
                 foreach (var segment in update.Segments)
+                {
+                    // Register source segment with the aligner for tracking
+                    captionAligner.AddSourceSegment(segment);
                     EnqueuePendingSegment(segment);
+                }
 
                 if (token.WaitHandle.WaitOne(25))
                     break;
@@ -215,14 +220,36 @@ namespace LiveCaptionsTranslator
                     Caption.DisplayTranslatedCaption =
                         TextUtil.ShortenDisplaySentence(Caption.TranslatedCaption, TextUtil.VERYLONG_THRESHOLD);
 
-                    // Overlay window
-                    if (Caption.TranslatedCaption.Contains("[ERROR]") || Caption.TranslatedCaption.Contains("[WARNING]"))
+                    // Align translation with its source segment
+                    // Strip latency prefix [xxxx ms] before aligning
+                    var prefixMatch = RegexPatterns.NoticePrefixAndTranslation().Match(translatedText);
+                    string cleanTranslation = prefixMatch.Success ? prefixMatch.Groups[2].Value.Trim() : translatedText;
+                    bool isError = translatedText.Contains("[ERROR]") || translatedText.Contains("[WARNING]");
+
+                    // Overlay window - use aligned display for synced view
+                    if (isError)
+                    {
                         Caption.OverlayCurrentTranslation = Caption.TranslatedCaption;
+                    }
                     else
                     {
-                        var match = RegexPatterns.NoticePrefixAndTranslation().Match(Caption.TranslatedCaption);
+                        if (!string.IsNullOrWhiteSpace(cleanTranslation))
+                            captionAligner.UpdateTranslation(output.SegmentId, cleanTranslation, output.IsFinal);
+
+                        var alignedDisplay = captionAligner.GetAlignedDisplay(
+                            output.SegmentId,
+                            historyCount: Math.Max(1, Setting.DisplaySentences - 1));
+
+                        // Update overlay original caption from aligner (shows history + current aligned)
+                        if (!string.IsNullOrEmpty(alignedDisplay.OverlayOriginalText))
+                            Caption.OverlayOriginalCaption = alignedDisplay.OverlayOriginalText;
+
+                        // Update overlay translation from aligner (shows history + current aligned)
+                        var match = RegexPatterns.NoticePrefixAndTranslation().Match(translatedText);
                         Caption.OverlayNoticePrefix = match.Groups[1].Value.Trim();
-                        Caption.OverlayCurrentTranslation = match.Groups[2].Value.Trim();
+                        Caption.OverlayCurrentTranslation = !string.IsNullOrEmpty(alignedDisplay.OverlayTranslatedText)
+                            ? alignedDisplay.OverlayTranslatedText
+                            : match.Groups[2].Value.Trim();
                     }
 
                     // Log display update
@@ -393,10 +420,19 @@ namespace LiveCaptionsTranslator
             {
                 var sw = Setting.MainWindow.LatencyShow ? Stopwatch.StartNew() : null;
 
-                // ContextAware/ExpandedContext logic is handled inside BuildLLMMessages for LLM APIs;
-                // non-LLM APIs simply receive the raw text via their own methods.
-                translatedText = await TranslateAPI.TranslateFunction(text, token, onPartial);
-                translatedText = translatedText.Replace("🔤", "");
+                // Use fallback-enabled translation if a fallback API is configured
+                if (!string.IsNullOrWhiteSpace(Setting.FallbackApiName))
+                {
+                    var fallbackResult = await TranslateDispatcher.TranslateWithFallbackAsync(text, token, onPartial);
+                    translatedText = fallbackResult.ToString().Replace("🔤", "");
+                }
+                else
+                {
+                    // ContextAware/ExpandedContext logic is handled inside BuildLLMMessages for LLM APIs;
+                    // non-LLM APIs simply receive the raw text via their own methods.
+                    translatedText = await TranslateAPI.TranslateFunction(text, token, onPartial);
+                    translatedText = translatedText.Replace("🔤", "");
+                }
 
                 if (sw != null)
                 {

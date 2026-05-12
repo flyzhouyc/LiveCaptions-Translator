@@ -30,6 +30,14 @@ namespace LiveCaptionsTranslator
 
             TranslateAPIBox.ItemsSource = Translator.Setting?.Configs.Keys;
 
+            // Fallback API box: include a "(None)" option + all API names
+            var fallbackItems = new List<string> { "(None)" };
+            if (Translator.Setting?.Configs != null)
+                fallbackItems.AddRange(Translator.Setting.Configs.Keys);
+            FallbackApiBox.ItemsSource = fallbackItems;
+            FallbackApiBox.SelectedItem = string.IsNullOrEmpty(Translator.Setting?.FallbackApiName)
+                ? "(None)" : Translator.Setting.FallbackApiName;
+
             LoadAPISetting();
         }
 
@@ -167,6 +175,26 @@ namespace LiveCaptionsTranslator
         private void ProxyInfo_MouseLeave(object sender, MouseEventArgs e)
         {
             ProxyInfoFlyout.Hide();
+        }
+
+        private void FallbackApiInfo_MouseEnter(object sender, MouseEventArgs e)
+        {
+            FallbackApiInfoFlyout.Show();
+        }
+
+        private void FallbackApiInfo_MouseLeave(object sender, MouseEventArgs e)
+        {
+            FallbackApiInfoFlyout.Hide();
+        }
+
+        private void FallbackApiBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (Translator.Setting == null)
+                return;
+
+            string? selected = FallbackApiBox.SelectedItem?.ToString();
+            Translator.Setting.FallbackApiName =
+                string.IsNullOrEmpty(selected) || selected == "(None)" ? null : selected;
         }
 
         private void ProxyApplyButton_Click(object sender, RoutedEventArgs e)

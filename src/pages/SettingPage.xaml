@@ -135,6 +135,45 @@
                     LostFocus="TargetLangBox_LostFocus"
                     SelectionChanged="TargetLangBox_SelectionChanged" />
             </StackPanel>
+
+            <StackPanel Margin="15,10,0,0" Orientation="Vertical">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock
+                        Margin="2.5,0,0,5"
+                        VerticalAlignment="Center"
+                        Text="Fallback API" />
+                    <ui:Flyout x:Name="FallbackApiInfoFlyout">
+                        <TextBlock Width="350" TextWrapping="Wrap">
+                            <Run FontWeight="DemiBold" TextDecorations="Underline" Text="Fallback Translation API" />
+                            <Run Text="&#x0A;When the primary translation API fails (timeout, error, or truncated output), the system automatically retries with this fallback API." />
+                            <Run Text="&#x0A;&#x0A;Leave empty to disable fallback." />
+                            <Run FontWeight="Bold" Text="&#x0A;Tip:" />
+                            <Run Text="Choose a free/no-config API (like Google) as fallback for maximum reliability." />
+                        </TextBlock>
+                    </ui:Flyout>
+                    <Button
+                        x:Name="FallbackApiInfo"
+                        Width="15"
+                        Height="15"
+                        Margin="-5,-3,0,0"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        MouseEnter="FallbackApiInfo_MouseEnter"
+                        MouseLeave="FallbackApiInfo_MouseLeave">
+                        <ui:SymbolIcon Symbol="Info16" />
+                    </Button>
+                </StackPanel>
+                <ComboBox
+                    x:Name="FallbackApiBox"
+                    Width="150"
+                    Height="30"
+                    Padding="10,4,10,7"
+                    FontSize="13.3"
+                    IsEditable="True"
+                    SelectedItem="{Binding FallbackApiName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    SelectionChanged="FallbackApiBox_SelectionChanged" />
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Vertical">

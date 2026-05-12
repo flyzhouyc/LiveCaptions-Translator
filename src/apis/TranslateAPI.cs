@@ -98,7 +98,7 @@ namespace LiveCaptionsTranslator.apis
             return await client.SendAsync(request, linkedCts.Token);
         }
 
-        private static bool TryGetConfig<T>(string apiName, out T config) where T : TranslateAPIConfig
+        public static bool TryGetConfig<T>(string apiName, out T config) where T : TranslateAPIConfig
         {
             if (Translator.Setting[apiName] is T typedConfig)
             {
@@ -110,7 +110,7 @@ namespace LiveCaptionsTranslator.apis
             return false;
         }
 
-        private static List<BaseLLMConfig.Message> BuildLLMMessages(string language, string text)
+        public static List<BaseLLMConfig.Message> BuildLLMMessages(string language, string text)
         {
             var messages = new List<BaseLLMConfig.Message>
             {

@@ -24,6 +24,7 @@ namespace LiveCaptionsTranslator.models
         private bool debugLog = false;
 
         private string apiName;
+        private string? fallbackApiName;
         private string targetLanguage;
         private string prompt;
         private string? ignoredUpdateVersion;
@@ -89,6 +90,15 @@ namespace LiveCaptionsTranslator.models
             {
                 apiName = value;
                 OnPropertyChanged("ApiName");
+            }
+        }
+        public string? FallbackApiName
+        {
+            get => fallbackApiName;
+            set
+            {
+                fallbackApiName = value;
+                OnPropertyChanged("FallbackApiName");
             }
         }
         public string TargetLanguage
