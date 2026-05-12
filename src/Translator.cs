@@ -225,6 +225,7 @@ namespace LiveCaptionsTranslator
                     var prefixMatch = RegexPatterns.NoticePrefixAndTranslation().Match(translatedText);
                     string cleanTranslation = prefixMatch.Success ? prefixMatch.Groups[2].Value.Trim() : translatedText;
                     bool isError = translatedText.Contains("[ERROR]") || translatedText.Contains("[WARNING]");
+                    Caption.OverlayCurrentSourceText = output.SourceText;
 
                     // Overlay window - use aligned display for synced view
                     if (isError)
@@ -238,17 +239,17 @@ namespace LiveCaptionsTranslator
 
                         var alignedDisplay = captionAligner.GetAlignedDisplay(
                             output.SegmentId,
-                            historyCount: Math.Max(1, Setting.DisplaySentences - 1));
+                            historyCount: Math.Max(0, Setting.DisplaySentences - 1));
 
-                        // Update overlay original caption from aligner (shows history + current aligned)
+                        // Update overlay original caption from aligner (shows aligned history + current source)
                         if (!string.IsNullOrEmpty(alignedDisplay.OverlayOriginalText))
                             Caption.OverlayOriginalCaption = alignedDisplay.OverlayOriginalText;
 
-                        // Update overlay translation from aligner (shows history + current aligned)
+                        // Keep previous translation in OverlayPreviousTranslation; this run is current only.
                         var match = RegexPatterns.NoticePrefixAndTranslation().Match(translatedText);
                         Caption.OverlayNoticePrefix = match.Groups[1].Value.Trim();
-                        Caption.OverlayCurrentTranslation = !string.IsNullOrEmpty(alignedDisplay.OverlayTranslatedText)
-                            ? alignedDisplay.OverlayTranslatedText
+                        Caption.OverlayCurrentTranslation = !string.IsNullOrEmpty(alignedDisplay.CurrentTranslation)
+                            ? alignedDisplay.CurrentTranslation
                             : match.Groups[2].Value.Trim();
                     }
 

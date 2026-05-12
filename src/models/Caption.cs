@@ -17,6 +17,7 @@ namespace LiveCaptionsTranslator.models
         private string displayTranslatedCaption = string.Empty;
         private string overlayOriginalCaption = " ";
         private string overlayCurrentTranslation = " ";
+        private string overlayCurrentSourceText = string.Empty;
         private string overlayNoticePrefix = " ";
         private readonly object contextsLock = new();
         private readonly Queue<TranslationHistoryEntry> contexts = new(MAX_CONTEXTS);
@@ -86,12 +87,24 @@ namespace LiveCaptionsTranslator.models
                 OnPropertyChanged("OverlayCurrentTranslation");
             }
         }
+        public string OverlayCurrentSourceText
+        {
+            get => overlayCurrentSourceText;
+            set
+            {
+                if (string.CompareOrdinal(overlayCurrentSourceText, value) == 0)
+                    return;
+                overlayCurrentSourceText = value;
+                OnPropertyChanged("OverlayPreviousTranslation");
+            }
+        }
 
         public string OverlayPreviousTranslation
         {
             get
             {
-                string previousTranslation = GetPreviousText(Translator.Setting.DisplaySentences, TextType.Translation);
+                int previousCount = Math.Max(0, Translator.Setting.DisplaySentences - 1);
+                string previousTranslation = GetPreviousTextBeforeCurrent(previousCount, TextType.Translation);
                 return string.IsNullOrEmpty(previousTranslation) ? string.Empty : previousTranslation + Environment.NewLine;
             }
         }
@@ -160,11 +173,44 @@ namespace LiveCaptionsTranslator.models
         public string GetPreviousText(int count, TextType textType)
         {
             var previousContexts = GetPreviousContexts(count).ToArray();
+            return FormatPreviousText(previousContexts, textType);
+        }
+
+        private string GetPreviousTextBeforeCurrent(int count, TextType textType)
+        {
+            if (count <= 0)
+                return string.Empty;
+
+            var previousContexts = GetPreviousContexts(count + 1).ToArray();
             if (previousContexts.Length == 0)
                 return string.Empty;
 
+            if (IsCurrentContext(previousContexts[^1]))
+                previousContexts = previousContexts[..^1];
+
+            if (previousContexts.Length == 0)
+                return string.Empty;
+
+            if (previousContexts.Length > count)
+                previousContexts = previousContexts[^count..];
+
+            return FormatPreviousText(previousContexts, textType);
+        }
+
+        private bool IsCurrentContext(TranslationHistoryEntry entry)
+        {
+            return !string.IsNullOrWhiteSpace(overlayCurrentSourceText) &&
+                   TextAlignmentUtil.IsLikelyRevision(entry.SourceText, overlayCurrentSourceText);
+        }
+
+        private static string FormatPreviousText(IEnumerable<TranslationHistoryEntry> previousContexts, TextType textType)
+        {
+            var contexts = previousContexts.ToArray();
+            if (contexts.Length == 0)
+                return string.Empty;
+
             var builder = new StringBuilder();
-            foreach (var entry in previousContexts)
+            foreach (var entry in contexts)
             {
                 string current = textType == TextType.Caption ? entry.SourceText : entry.TranslatedText;
                 current = RegexPatterns.NoticePrefix().Replace(current, "");
